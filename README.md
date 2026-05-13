@@ -33,3 +33,13 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 python manage.py runserver
+```
+### 3. Frontend Kurulumu
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Geliştiren: [Anıl Arda Kılıç]
+
