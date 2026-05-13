@@ -1,20 +1,14 @@
 from django.contrib import admin
 from django.urls import path
-from api.views import EtkinlikListesi
-from api.views import bakiye_ekle
+from api import views 
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/etkinlikler/', EtkinlikListesi.as_view()),
-]
-
-from api.views import EtkinlikListesi, bilet_al, kullanici_detay, biletlerim
-
-urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/etkinlikler/', EtkinlikListesi.as_view()),
-    path('api/bilet-al/', bilet_al),
-    path('api/kullanici/<int:pk>/', kullanici_detay), 
-    path('api/biletlerim/<int:kullanici_id>/', biletlerim), 
-    path('api/bakiye-ekle/', bakiye_ekle),
+    path('api/etkinlikler/', views.EtkinlikListesi.as_view()),
+    path('api/bilet-al/', views.bilet_al),
+    path('api/kullanici/<int:pk>/', views.kullanici_detay),
+    path('api/biletlerim/<int:kullanici_id>/', views.biletlerim),
+    path('api/bakiye-ekle/', views.bakiye_ekle),
+    path('api/analiz/', views.etkinlik_analizi),
+    path('api/loglar/<int:kullanici_id>/', views.islem_gecmisi),
 ]
