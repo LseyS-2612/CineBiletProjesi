@@ -38,17 +38,29 @@ def kullanici_detay(request, pk):
 
 @api_view(['GET'])
 def biletlerim(request, kullanici_id):
-    # durumu aktif olan biletleri listeleyelim
-    biletler = Biletler.objects.filter(kullaniciid=kullanici_id, durum='Aktif')
+    # DATE() fonksiyonunu kaldırıp tam zamanı (saat/dk/sn) kullanıyoruz.
+    # Böylece her farklı satın alma anı ayrı bir satır olur.
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT e.EtkinlikAdi, b.SatinAlmaTarihi, COUNT(b.BiletID) as Adet
+            FROM biletler b
+            JOIN etkinlikler e ON b.EtkinlikID = e.EtkinlikID
+            WHERE b.KullaniciID = %s AND b.Durum = 'Aktif'
+            GROUP BY e.EtkinlikAdi, b.SatinAlmaTarihi
+            ORDER BY b.SatinAlmaTarihi DESC
+        """, [kullanici_id])
+        rows = cursor.fetchall()
+        
     sonuc = []
-    for bilet in biletler:
-        etkinlik = Etkinlikler.objects.get(pk=bilet.etkinlikid)
+    for row in rows:
         sonuc.append({
-            "bilet_id": bilet.biletid,
-            "etkinlik_adi": etkinlik.etkinlikadi,
-            "tarih": bilet.satinalmatarihi
+            "etkinlik_adi": row[0],
+            "tarih": row[1],
+            "adet": row[2]
         })
     return Response(sonuc)
+
+
 
 @api_view(['POST'])
 def bakiye_ekle(request):
@@ -149,11 +161,12 @@ def yorum_yap(request):
 def bilet_al(request):
     kullanici_id = 1
     etkinlik_id = request.data.get('etkinlik_id')
-    adet = int(request.data.get('adet', 1)) # Eğer adet gelmezse varsayılan 1 olur
+    # Arayüzden gelen 'adet' bilgisini yakalıyoruz (Gelmezse varsayılan 1)
+    adet = int(request.data.get('adet', 1)) 
     
     try:
         with connection.cursor() as cursor:
-            # Güncel procedure artık 3 parametre alıyor
+            # Stored Procedure'e artık 3 parametre (ID, Etkinlik, Adet) gönderiyoruz
             cursor.callproc('sp_BiletSatinAl', [kullanici_id, etkinlik_id, adet])
         return Response({"message": f"{adet} adet bilet başarıyla alındı!"})
     except Exception as e:

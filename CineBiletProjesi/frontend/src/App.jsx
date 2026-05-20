@@ -14,18 +14,20 @@ function App() {
 
   // Tüm verileri tek fonksiyon üzerinden güncelliyoruz
   const verileriGuncelle = () => {
-    axios.get('http://127.0.0.1:8000/api/etkinlikler/').then(res => setEtkinlikler(res.data))
-    axios.get('http://127.0.0.1:8000/api/kullanici/1/').then(res => setKullanici(res.data))
-    axios.get('http://127.0.0.1:8000/api/biletlerim/1/')
+    const ts = new Date().getTime(); // Cache kırmak için zaman damgası
+    
+    axios.get(`http://127.0.0.1:8000/api/etkinlikler/?t=${ts}`).then(res => setEtkinlikler(res.data))
+    axios.get(`http://127.0.0.1:8000/api/kullanici/1/?t=${ts}`).then(res => setKullanici(res.data))
+    axios.get(`http://127.0.0.1:8000/api/biletlerim/1/?t=${ts}`)
       .then(res => setBiletlerim(res.data))
       .catch(() => console.log("bilet yok henüz"))
 
     // SQL View verileri
-    axios.get('http://127.0.0.1:8000/api/analiz/').then(res => setAnaliz(res.data));
+    axios.get(`http://127.0.0.1:8000/api/analiz/?t=${ts}`).then(res => setAnaliz(res.data));
     // Trigger Logları verileri
-    axios.get('http://127.0.0.1:8000/api/loglar/1/').then(res => setLoglar(res.data));
+    axios.get(`http://127.0.0.1:8000/api/loglar/1/?t=${ts}`).then(res => setLoglar(res.data));
     // Yeni eklenen film yorumları verileri
-    axios.get('http://127.0.0.1:8000/api/yorumlar/').then(res => setYorumlar(res.data));
+    axios.get(`http://127.0.0.1:8000/api/yorumlar/?t=${ts}`).then(res => setYorumlar(res.data));
   }
 
   useEffect(() => {
@@ -69,7 +71,9 @@ function App() {
           message: res.data.message,
           type: 'success'
         });
-        verileriGuncelle(); 
+        setTimeout(() => {
+          verileriGuncelle(); 
+        }, 300);
       })
       .catch(err => {
         const hataMesaji = err.response?.data?.error || 'Hata olustu';
@@ -194,16 +198,37 @@ function App() {
         </div>
 
         {biletlerim.length > 0 && (
-           <div style={{ marginTop: '50px' }}>
-             <h2 style={{ borderLeft: '5px solid #2ecc71', paddingLeft: '15px' }}>Biletlerim</h2>
-             {/* BİLETLERİM KISMINA SCROLL EKLENDİ (maxHeight ve overflowY) */}
-             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginTop: '20px', maxHeight: '250px', overflowY: 'auto', paddingRight: '10px' }}>
-                {biletlerim.map((b, i) => (
-                  <div key={i} style={{ backgroundColor: '#222', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #2ecc71', minWidth: '160px' }}>
-                    <b>{b.etkinlik_adi}</b> <br />
-                    <small style={{ color: '#aaa' }}>{new Date(b.tarih).toLocaleDateString('tr-TR')}</small>
-                  </div>
-                ))}
+           <div style={{ marginTop: '50px', backgroundColor: '#1a1a1a', padding: '25px', borderRadius: '15px', border: '1px solid #333' }}>
+             <h2 style={{ borderLeft: '5px solid #2ecc71', paddingLeft: '15px', color: '#2ecc71', margin: '0 0 20px 0' }}>Biletlerim</h2>
+             
+             {/* Tablo için scroll alanı */}
+             <div style={{ maxHeight: '250px', overflowY: 'auto', paddingRight: '10px' }}>
+               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                 <thead style={{ position: 'sticky', top: 0, backgroundColor: '#1a1a1a', zIndex: 1 }}>
+                   <tr style={{ borderBottom: '2px solid #333', color: '#aaa' }}>
+                     <th style={{ padding: '12px' }}>Film / Etkinlik Adı</th>
+                     <th>Tarih</th>
+                     <th>Bilet Adedi</th>
+                   </tr>
+                 </thead>
+                 <tbody>
+                   {biletlerim.map((b, i) => (
+                     // Key değerine tam tarih ekleyerek React'in anlık çizmesini garantiliyoruz
+                     <tr key={b.etkinlik_adi + b.tarih + i} style={{ borderBottom: '1px solid #222', transition: 'background-color 0.2s' }}>
+                       <td style={{ padding: '12px', fontWeight: 'bold' }}>{b.etkinlik_adi}</td>
+                       
+                       {/* toLocaleDateString yerine toLocaleString yaparak SAAT bilgisini de ekrana yazdırıyoruz */}
+                       <td style={{ color: '#aaa' }}>{new Date(b.tarih).toLocaleString('tr-TR')}</td>
+                       
+                       <td>
+                         <span style={{ backgroundColor: '#2ecc71', color: '#000', padding: '4px 12px', borderRadius: '12px', fontWeight: 'bold', fontSize: '13px' }}>
+                           {b.adet} Adet
+                         </span>
+                       </td>
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
              </div>
            </div>
         )}
