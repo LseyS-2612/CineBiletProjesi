@@ -9,6 +9,8 @@ function App() {
   const [analiz, setAnaliz] = useState([]);
   const [loglar, setLoglar] = useState([]);
   const [yorumlar, setYorumlar] = useState([]);
+  
+  const [secilenFilm, setSecilenFilm] = useState(null);
 
   const closeModal = () => setModalData({ ...modalData, visible: false });
 
@@ -88,6 +90,19 @@ function App() {
   return (
     <div style={{ backgroundColor: '#0f0f0f', color: '#fff', minHeight: '100vh', fontFamily: 'Segoe UI, sans-serif' }}>
       
+      {/* Kartların üzerine gelince büyümesi için CSS eklentisi */}
+      <style>{`
+        .film-card {
+          transition: all 0.3s ease;
+          cursor: pointer;
+        }
+        .film-card:hover {
+          transform: scale(1.05);
+          box-shadow: 0 10px 20px rgba(229, 9, 20, 0.2);
+          border-color: #e50914 !important;
+        }
+      `}</style>
+
       {modalData.visible && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999 }}>
           <div style={{ backgroundColor: '#1a1a1a', padding: '40px', borderRadius: '20px', textAlign: 'center', border: `2px solid ${modalData.type === 'success' ? '#2ecc71' : '#e50914'}`, minWidth: '350px' }}>
@@ -98,13 +113,68 @@ function App() {
         </div>
       )}
 
+      {secilenFilm && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9998 }}>
+          <div style={{ backgroundColor: '#1a1a1a', padding: '30px', borderRadius: '15px', border: '1px solid #333', width: '400px', maxWidth: '90%' }}>
+            <h2 style={{ color: '#fff', marginTop: 0, borderBottom: '1px solid #333', paddingBottom: '15px' }}>{secilenFilm.etkinlikadi}</h2>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px' }}>
+                <div style={{ color: '#c084fc', fontSize: '14px' }}>📍 {secilenFilm.salon_adi}</div>
+                <div style={{ color: '#f1c40f', fontSize: '14px' }}>⏰ {secilenFilm.seans_saati ? secilenFilm.seans_saati.slice(0,5) : "-"}</div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <span style={{ color: '#2ecc71', fontWeight: 'bold', fontSize: '20px' }}>{secilenFilm.fiyat} TL</span>
+              <span style={{ color: '#aaa' }}>{secilenFilm.kapasite} Boş Koltuk</span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '25px' }}>
+              <input type="number" min="1" max={secilenFilm.kapasite} defaultValue="1" id={`adet-${secilenFilm.etkinlikid}`} style={{ width: '60px', padding: '10px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '6px', textAlign: 'center' }} />
+              <button 
+                onClick={() => {
+                  const adet = parseInt(document.getElementById(`adet-${secilenFilm.etkinlikid}`).value) || 1;
+                  biletSatinAl(secilenFilm.etkinlikid, secilenFilm.fiyat, secilenFilm.etkinlikadi, adet);
+                  setSecilenFilm(null);
+                }}
+                disabled={secilenFilm.kapasite <= 0}
+                style={{ flexGrow: 1, padding: '12px', backgroundColor: secilenFilm.kapasite > 0 ? '#e50914' : '#444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                {secilenFilm.kapasite > 0 ? 'Bilet Satın Al' : 'Tükendi'}
+              </button>
+            </div>
+
+            <div style={{ borderTop: '1px solid #333', paddingTop: '20px', marginBottom: '20px' }}>
+              <h4 style={{ margin: '0 0 15px 0', color: '#aaa' }}>Filmi Değerlendir</h4>
+              <input type="text" placeholder="Yorumunuzu buraya yazın..." id={`yorum-${secilenFilm.etkinlikid}`} style={{ width: '100%', padding: '10px', marginBottom: '10px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '6px', boxSizing: 'border-box' }} />
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <select id={`puan-${secilenFilm.etkinlikid}`} style={{ padding: '10px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '6px', flexGrow: 1 }}>
+                  <option value="5">5 ⭐ Harika</option><option value="4">4 ⭐ İyi</option><option value="3">3 ⭐ İdare Eder</option><option value="2">2 ⭐ Kötü</option><option value="1">1 ⭐ Berbat</option>
+                </select>
+                <button 
+                  onClick={() => {
+                    const metin = document.getElementById(`yorum-${secilenFilm.etkinlikid}`).value;
+                    const puan = document.getElementById(`puan-${secilenFilm.etkinlikid}`).value;
+                    if(!metin.trim()) return alert("Lütfen yorum metni yazın!");
+                    yorumGonder(secilenFilm.etkinlikid, puan, metin);
+                    setSecilenFilm(null);
+                  }}
+                  style={{ padding: '10px 20px', backgroundColor: '#2ecc71', color: '#000', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                >Paylaş</button>
+              </div>
+            </div>
+
+            <button onClick={() => setSecilenFilm(null)} style={{ width: '100%', padding: '12px', backgroundColor: 'transparent', color: '#aaa', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer' }}>Kapat</button>
+          </div>
+        </div>
+      )}
+
       <nav style={{ display: 'flex', justifyContent: 'space-between', padding: '20px 50px', backgroundColor: '#1a1a1a', borderBottom: '1px solid #333' }}>
         <h1 style={{ color: '#e50914', margin: 0 }}>CINEBILET</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
           <span>Hoş geldin, <b style={{ color: '#e50914' }}>{kullanici.adsoyad}</b></span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ backgroundColor: '#2ecc71', padding: '8px 20px', borderRadius: '30px', fontWeight: 'bold' }}>{kullanici.bakiye} TL</span>
-            <button onClick={bakiyeYukle} style={{ cursor: 'pointer', borderRadius: '50%', width: '30px', height: '30px' }}>+</button>
+            <span style={{ backgroundColor: '#2ecc71', padding: '8px 20px', borderRadius: '30px', fontWeight: 'bold', color: '#000' }}>{kullanici.bakiye} TL</span>
+            <button onClick={bakiyeYukle} style={{ cursor: 'pointer', borderRadius: '50%', width: '30px', height: '30px', fontWeight: 'bold' }}>+</button>
           </div>
         </div>
       </nav>
@@ -112,66 +182,31 @@ function App() {
       <div style={{ padding: '40px 50px' }}>
         <h2 style={{ borderLeft: '5px solid #e50914', paddingLeft: '15px', marginBottom: '30px' }}>Vizyondaki Filmler</h2>
         
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '25px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '25px' }}>
           {etkinlikler.map((etk) => (
-            <div key={etk.etkinlikid} style={{ backgroundColor: '#1a1a1a', borderRadius: '15px', border: '1px solid #333', padding: '20px' }}>
-                <h3 style={{ margin: '0 0 5px 0' }}>{etk.etkinlikadi}</h3>
-                
-                <div style={{ color: '#c084fc', fontSize: '14px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  <span>📍</span> {etk.salon_adi}
-                </div>
-
-                <div style={{ color: '#f1c40f', fontSize: '14px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                  {/* Güvenlik kontrolü eklendi */}
-                  <span>⏰</span> {etk.seans_saati ? etk.seans_saati.slice(0,5) : "Belirtilmedi"}
-                </div>
-
-                  {/* YENİ KATEGORİ ALANI BURAYA GELDİ */}
-                  <div style={{ color: '#3498db', fontSize: '13px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <div 
+              key={etk.etkinlikid} 
+              className="film-card"
+              onClick={() => setSecilenFilm(etk)}
+              style={{ backgroundColor: '#1a1a1a', borderRadius: '15px', border: '1px solid #333', padding: '25px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+            >
+                <div>
+                  <h3 style={{ margin: '0 0 10px 0', fontSize: '20px' }}>{etk.etkinlikadi}</h3>
+                  <div style={{ color: '#3498db', fontSize: '13px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '5px' }}>
                     <span>🏷️</span> {etk.kategoriler}
                   </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: '#2ecc71', fontWeight: 'bold', fontSize: '20px' }}>{etk.fiyat} TL</span>
-                  <span style={{ color: '#aaa' }}>{etk.kapasite} Koltuk</span>
-                </div>
-                
-                <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                  <input type="number" min="1" max={etk.kapasite} defaultValue="1" id={`adet-${etk.etkinlikid}`} style={{ width: '60px', padding: '10px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '6px', textAlign: 'center' }} />
-                  <button 
-                    onClick={() => {
-                      const adet = parseInt(document.getElementById(`adet-${etk.etkinlikid}`).value) || 1;
-                      biletSatinAl(etk.etkinlikid, etk.fiyat, etk.etkinlikadi, adet);
-                    }}
-                    disabled={etk.kapasite <= 0}
-                    style={{ flexGrow: 1, padding: '12px', backgroundColor: etk.kapasite > 0 ? '#e50914' : '#444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    {etk.kapasite > 0 ? 'Bilet Al' : 'Tükendi'}
-                  </button>
                 </div>
 
-                <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #333' }}>
-                  <input type="text" placeholder="Film hakkında yorumunuz..." id={`yorum-${etk.etkinlikid}`} style={{ width: '70%', padding: '8px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '6px', boxSizing: 'border-box' }} />
-                  <select id={`puan-${etk.etkinlikid}`} style={{ width: '25%', padding: '8px', marginLeft: '5%', backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '6px', boxSizing: 'border-box' }}>
-                    <option value="5">5 ⭐</option><option value="4">4 ⭐</option><option value="3">3 ⭐</option><option value="2">2 ⭐</option><option value="1">1 ⭐</option>
-                  </select>
-                  <button 
-                    onClick={() => {
-                      const metin = document.getElementById(`yorum-${etk.etkinlikid}`).value;
-                      const puan = document.getElementById(`puan-${etk.etkinlikid}`).value;
-                      if(!metin.trim()) return alert("Lütfen yorum metni yazın!");
-                      yorumGonder(etk.etkinlikid, puan, metin);
-                      document.getElementById(`yorum-${etk.etkinlikid}`).value = '';
-                    }}
-                    style={{ width: '100%', marginTop: '10px', padding: '8px', backgroundColor: '#2ecc71', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-                  >Yorum Paylaş</button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                  <span style={{ color: '#2ecc71', fontWeight: 'bold', fontSize: '22px' }}>{etk.fiyat} TL</span>
+                  <span style={{ color: '#aaa', fontSize: '13px', borderBottom: '1px solid #555' }}>Detay & Bilet ➔</span>
                 </div>
             </div>
           ))}
         </div>
 
         {biletlerim.length > 0 && (
-           <div style={{ marginTop: '50px', backgroundColor: '#1a1a1a', padding: '25px', borderRadius: '15px', border: '1px solid #333' }}>
+           <div style={{ marginTop: '60px', backgroundColor: '#1a1a1a', padding: '25px', borderRadius: '15px', border: '1px solid #333' }}>
              <h2 style={{ borderLeft: '5px solid #2ecc71', paddingLeft: '15px', color: '#2ecc71', margin: '0 0 20px 0' }}>Biletlerim</h2>
              <div style={{ maxHeight: '250px', overflowY: 'auto', paddingRight: '10px' }}>
                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -188,32 +223,12 @@ function App() {
                  <tbody>
                    {biletlerim.map((b, i) => (
                      <tr key={b.etkinlik_adi + b.tarih + i} style={{ borderBottom: '1px solid #222' }}>
-                       <td style={{ padding: '12px', fontWeight: 'bold' }}>
-                         {b.etkinlik_adi}
-                       </td>
-                       <td style={{ color: '#aaa' }}>
-                         {new Date(b.tarih).toLocaleDateString('tr-TR')}
-                       </td>
-                       <td style={{ color: '#f1c40f', fontWeight: 'bold' }}>
-                         {/* Güvenlik kontrolü eklendi */}
-                         {b.seans_saati && b.seans_saati !== "None" ? b.seans_saati.slice(0,5) : "-"}
-                       </td>
-                       <td style={{ color: '#c084fc' }}>
-                         {b.salon_adi}
-                       </td>
-                       <td>
-                         <span style={{ backgroundColor: '#2ecc71', color: '#000', padding: '4px 12px', borderRadius: '12px', fontWeight: 'bold', fontSize: '13px' }}>
-                           {b.adet} Adet
-                         </span>
-                       </td>
-                       <td>
-                         <button
-                           onClick={() => biletIptalEt(b.etkinlik_id, b.tarih)}
-                           style={{ backgroundColor: '#e50914', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer' }}
-                         >
-                           İptal
-                         </button>
-                       </td>
+                       <td style={{ padding: '12px', fontWeight: 'bold' }}>{b.etkinlik_adi}</td>
+                       <td style={{ color: '#aaa' }}>{new Date(b.tarih).toLocaleDateString('tr-TR')}</td>
+                       <td style={{ color: '#f1c40f', fontWeight: 'bold' }}>{b.seans_saati && b.seans_saati !== "None" ? b.seans_saati.slice(0,5) : "-"}</td>
+                       <td style={{ color: '#c084fc' }}>{b.salon_adi}</td>
+                       <td><span style={{ backgroundColor: '#2ecc71', color: '#000', padding: '4px 12px', borderRadius: '12px', fontWeight: 'bold', fontSize: '13px' }}>{b.adet} Adet</span></td>
+                       <td><button onClick={() => biletIptalEt(b.etkinlik_id, b.tarih)} style={{ backgroundColor: '#e50914', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer' }}>İptal</button></td>
                      </tr>
                    ))}
                  </tbody>
