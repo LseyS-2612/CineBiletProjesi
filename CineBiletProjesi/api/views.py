@@ -38,28 +38,18 @@ def kullanici_detay(request, pk):
 
 @api_view(['GET'])
 def biletlerim(request, kullanici_id):
-    # DATE() fonksiyonunu kaldırıp tam zamanı (saat/dk/sn) kullanıyoruz.
-    # Böylece her farklı satın alma anı ayrı bir satır olur.
     with connection.cursor() as cursor:
         cursor.execute("""
-            SELECT e.EtkinlikAdi, b.SatinAlmaTarihi, COUNT(b.BiletID) as Adet
-            FROM biletler b
-            JOIN etkinlikler e ON b.EtkinlikID = e.EtkinlikID
+            SELECT e.EtkinlikID, e.EtkinlikAdi, b.SatinAlmaTarihi, COUNT(b.BiletID) as Adet
+            FROM biletler b JOIN etkinlikler e ON b.EtkinlikID = e.EtkinlikID
             WHERE b.KullaniciID = %s AND b.Durum = 'Aktif'
-            GROUP BY e.EtkinlikAdi, b.SatinAlmaTarihi
+            GROUP BY e.EtkinlikID, e.EtkinlikAdi, b.SatinAlmaTarihi
             ORDER BY b.SatinAlmaTarihi DESC
         """, [kullanici_id])
         rows = cursor.fetchall()
         
-    sonuc = []
-    for row in rows:
-        sonuc.append({
-            "etkinlik_adi": row[0],
-            "tarih": row[1],
-            "adet": row[2]
-        })
+    sonuc = [{"etkinlik_id": r[0], "etkinlik_adi": r[1], "tarih": r[2].strftime('%Y-%m-%d %H:%M:%S'), "adet": r[3]} for r in rows]
     return Response(sonuc)
-
 
 
 @api_view(['POST'])
@@ -169,5 +159,16 @@ def bilet_al(request):
             # Stored Procedure'e artık 3 parametre (ID, Etkinlik, Adet) gönderiyoruz
             cursor.callproc('sp_BiletSatinAl', [kullanici_id, etkinlik_id, adet])
         return Response({"message": f"{adet} adet bilet başarıyla alındı!"})
+    except Exception as e:
+        return Response({"error": str(e)}, status=400)
+    
+
+
+@api_view(['POST'])
+def bilet_iptal(request):
+    try:
+        with connection.cursor() as cursor:
+            cursor.callproc('sp_BiletIptalGrubu', [1, request.data.get('etkinlik_id'), request.data.get('tarih')])
+        return Response({"message": "Bilet iptal edildi ve ücret iade edildi!"})
     except Exception as e:
         return Response({"error": str(e)}, status=400)
