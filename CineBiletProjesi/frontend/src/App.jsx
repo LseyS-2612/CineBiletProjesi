@@ -12,9 +12,8 @@ function App() {
 
   const closeModal = () => setModalData({ ...modalData, visible: false });
 
-  // Tüm verileri tek fonksiyon üzerinden güncelliyoruz
   const verileriGuncelle = () => {
-    const ts = new Date().getTime(); // Cache kırmak için zaman damgası
+    const ts = new Date().getTime(); 
     
     axios.get(`http://127.0.0.1:8000/api/etkinlikler/?t=${ts}`).then(res => setEtkinlikler(res.data))
     axios.get(`http://127.0.0.1:8000/api/kullanici/1/?t=${ts}`).then(res => setKullanici(res.data))
@@ -66,7 +65,6 @@ function App() {
       });
   }
 
-  // İPTAL FONKSİYONU DIŞARI ALINDI
   const biletIptalEt = (etkinlik_id, tarih) => {
     if (!window.confirm("Bu biletleri iptal etmek istediğinize emin misiniz? Ücret iade edilecektir.")) return;
     
@@ -117,7 +115,22 @@ function App() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '25px' }}>
           {etkinlikler.map((etk) => (
             <div key={etk.etkinlikid} style={{ backgroundColor: '#1a1a1a', borderRadius: '15px', border: '1px solid #333', padding: '20px' }}>
-                <h3 style={{ margin: '0 0 10px 0' }}>{etk.etkinlikadi}</h3>
+                <h3 style={{ margin: '0 0 5px 0' }}>{etk.etkinlikadi}</h3>
+                
+                <div style={{ color: '#c084fc', fontSize: '14px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span>📍</span> {etk.salon_adi}
+                </div>
+
+                <div style={{ color: '#f1c40f', fontSize: '14px', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  {/* Güvenlik kontrolü eklendi */}
+                  <span>⏰</span> {etk.seans_saati ? etk.seans_saati.slice(0,5) : "Belirtilmedi"}
+                </div>
+
+                  {/* YENİ KATEGORİ ALANI BURAYA GELDİ */}
+                  <div style={{ color: '#3498db', fontSize: '13px', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <span>🏷️</span> {etk.kategoriler}
+                  </div>
+
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#2ecc71', fontWeight: 'bold', fontSize: '20px' }}>{etk.fiyat} TL</span>
                   <span style={{ color: '#aaa' }}>{etk.kapasite} Koltuk</span>
@@ -164,16 +177,43 @@ function App() {
                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                  <thead style={{ position: 'sticky', top: 0, backgroundColor: '#1a1a1a', zIndex: 1 }}>
                    <tr style={{ borderBottom: '2px solid #333', color: '#aaa' }}>
-                     <th style={{ padding: '12px' }}>Film / Etkinlik Adı</th><th>Tarih</th><th>Bilet Adedi</th><th>İşlem</th>
+                     <th style={{ padding: '12px' }}>Film</th>
+                     <th>Tarih</th>
+                     <th>Saat</th>
+                     <th>Salon</th>
+                     <th>Adet</th>
+                     <th>İşlem</th>
                    </tr>
                  </thead>
                  <tbody>
                    {biletlerim.map((b, i) => (
                      <tr key={b.etkinlik_adi + b.tarih + i} style={{ borderBottom: '1px solid #222' }}>
-                       <td style={{ padding: '12px', fontWeight: 'bold' }}>{b.etkinlik_adi}</td>
-                       <td style={{ color: '#aaa' }}>{new Date(b.tarih).toLocaleString('tr-TR')}</td>
-                       <td><span style={{ backgroundColor: '#2ecc71', color: '#000', padding: '4px 12px', borderRadius: '12px', fontWeight: 'bold', fontSize: '13px' }}>{b.adet} Adet</span></td>
-                       <td><button onClick={() => biletIptalEt(b.etkinlik_id, b.tarih)} style={{ backgroundColor: '#e50914', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer' }}>İptal Et</button></td>
+                       <td style={{ padding: '12px', fontWeight: 'bold' }}>
+                         {b.etkinlik_adi}
+                       </td>
+                       <td style={{ color: '#aaa' }}>
+                         {new Date(b.tarih).toLocaleDateString('tr-TR')}
+                       </td>
+                       <td style={{ color: '#f1c40f', fontWeight: 'bold' }}>
+                         {/* Güvenlik kontrolü eklendi */}
+                         {b.seans_saati && b.seans_saati !== "None" ? b.seans_saati.slice(0,5) : "-"}
+                       </td>
+                       <td style={{ color: '#c084fc' }}>
+                         {b.salon_adi}
+                       </td>
+                       <td>
+                         <span style={{ backgroundColor: '#2ecc71', color: '#000', padding: '4px 12px', borderRadius: '12px', fontWeight: 'bold', fontSize: '13px' }}>
+                           {b.adet} Adet
+                         </span>
+                       </td>
+                       <td>
+                         <button
+                           onClick={() => biletIptalEt(b.etkinlik_id, b.tarih)}
+                           style={{ backgroundColor: '#e50914', color: '#fff', border: 'none', padding: '5px 10px', borderRadius: '5px', cursor: 'pointer' }}
+                         >
+                           İptal
+                         </button>
+                       </td>
                      </tr>
                    ))}
                  </tbody>

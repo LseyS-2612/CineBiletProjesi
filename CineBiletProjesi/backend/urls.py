@@ -4,7 +4,7 @@ from api import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/etkinlikler/', views.EtkinlikListesi.as_view()),
+    path('api/etkinlikler/', views.etkinlikler),
     path('api/bilet-al/', views.bilet_al),
     path('api/kullanici/<int:pk>/', views.kullanici_detay),
     path('api/biletlerim/<int:kullanici_id>/', views.biletlerim),

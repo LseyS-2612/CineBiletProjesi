@@ -6,24 +6,35 @@ from django.db import connection
 from .models import Etkinlikler, Kullanicilar, Biletler
 from .serializers import EtkinlikSerializer
 
-# ana sayfadaki filmleri listeler
-class EtkinlikListesi(ListAPIView):
-    queryset = Etkinlikler.objects.all()
-    serializer_class = EtkinlikSerializer
 
-@api_view(['POST'])
-def bilet_al(request):
-    kullanici_id = 1 # hoca sorarsa burayi ilerde auth sistemine baglicam dersin
-    etkinlik_id = request.data.get('etkinlik_id')
-    
-    try:
-        with connection.cursor() as cursor:
-            # mysql tarafındaki procedure tetikleniyor
-            cursor.callproc('sp_BiletSatinAl', [kullanici_id, etkinlik_id])
-        return Response({"message": "Bilet başarıyla alındı!"})
-    except Exception as e:
-        # sql'den gelen hata mesajini doner
-        return Response({"error": str(e)}, status=400)
+@api_view(['GET'])
+def etkinlikler(request):
+    with connection.cursor() as cursor:
+        # GROUP_CONCAT ve LEFT JOIN ile kategorileri çektik
+        cursor.execute("""
+            SELECT 
+                e.EtkinlikID, e.EtkinlikAdi, e.Fiyat, e.Kapasite, s.SalonAdi, e.seans_saati,
+                GROUP_CONCAT(k.KategoriAdi SEPARATOR ', ') as Kategoriler
+            FROM etkinlikler e
+            LEFT JOIN Salonlar s ON e.SalonID = s.SalonID
+            LEFT JOIN EtkinlikKategori ek ON e.EtkinlikID = ek.EtkinlikID
+            LEFT JOIN Kategoriler k ON ek.KategoriID = k.KategoriID
+            GROUP BY e.EtkinlikID, s.SalonAdi
+        """)
+        rows = cursor.fetchall()
+        
+    result = []
+    for row in rows:
+        result.append({
+            "etkinlikid": row[0],
+            "etkinlikadi": row[1],
+            "fiyat": row[2],
+            "kapasite": row[3],
+            "salon_adi": row[4] or "Belirtilmemiş",
+            "seans_saati": str(row[5]) if row[5] else None,
+            "kategoriler": row[6] or "Kategori Yok" # Yeni alan
+        })
+    return Response(result)
 
 @api_view(['GET'])
 def kullanici_detay(request, pk):
@@ -39,16 +50,27 @@ def kullanici_detay(request, pk):
 @api_view(['GET'])
 def biletlerim(request, kullanici_id):
     with connection.cursor() as cursor:
+        # Sorguya e.seans_saati eklendi
         cursor.execute("""
-            SELECT e.EtkinlikID, e.EtkinlikAdi, b.SatinAlmaTarihi, COUNT(b.BiletID) as Adet
-            FROM biletler b JOIN etkinlikler e ON b.EtkinlikID = e.EtkinlikID
+            SELECT e.EtkinlikID, e.EtkinlikAdi, b.SatinAlmaTarihi, COUNT(b.BiletID) as Adet, s.SalonAdi, e.seans_saati
+            FROM biletler b 
+            JOIN etkinlikler e ON b.EtkinlikID = e.EtkinlikID
+            LEFT JOIN Salonlar s ON e.SalonID = s.SalonID
             WHERE b.KullaniciID = %s AND b.Durum = 'Aktif'
-            GROUP BY e.EtkinlikID, e.EtkinlikAdi, b.SatinAlmaTarihi
+            GROUP BY e.EtkinlikID, e.EtkinlikAdi, b.SatinAlmaTarihi, s.SalonAdi, e.seans_saati
             ORDER BY b.SatinAlmaTarihi DESC
         """, [kullanici_id])
         rows = cursor.fetchall()
         
-    sonuc = [{"etkinlik_id": r[0], "etkinlik_adi": r[1], "tarih": r[2].strftime('%Y-%m-%d %H:%M:%S'), "adet": r[3]} for r in rows]
+    sonuc = [{
+        "etkinlik_id": r[0], 
+        "etkinlik_adi": r[1], 
+        "tarih": r[2].strftime('%Y-%m-%d %H:%M:%S'), 
+        "adet": r[3], 
+        "salon_adi": r[4], 
+        # Saat verisi eklendi
+        "seans_saati": str(r[5]) if r[5] else None
+    } for r in rows]
     return Response(sonuc)
 
 
