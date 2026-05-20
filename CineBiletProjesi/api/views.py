@@ -141,3 +141,20 @@ def yorum_yap(request):
         """, [kullanici_id, etkinlik_id, puan, yorum_metni])
         
     return Response({"message": "Yorum başarıyla eklendi!"})
+
+
+
+
+@api_view(['POST'])
+def bilet_al(request):
+    kullanici_id = 1
+    etkinlik_id = request.data.get('etkinlik_id')
+    adet = int(request.data.get('adet', 1)) # Eğer adet gelmezse varsayılan 1 olur
+    
+    try:
+        with connection.cursor() as cursor:
+            # Güncel procedure artık 3 parametre alıyor
+            cursor.callproc('sp_BiletSatinAl', [kullanici_id, etkinlik_id, adet])
+        return Response({"message": f"{adet} adet bilet başarıyla alındı!"})
+    except Exception as e:
+        return Response({"error": str(e)}, status=400)

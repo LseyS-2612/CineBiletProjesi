@@ -49,24 +49,24 @@ function App() {
     }
   };
 
-  const biletSatinAl = (id, fiyat, ad) => {
-    if (kullanici.bakiye < fiyat) {
+  const biletSatinAl = (id, fiyat, ad, adet) => {
+    const toplamFiyat = fiyat * adet;
+    if (kullanici.bakiye < toplamFiyat) {
       setModalData({
         visible: true,
         title: 'Yetersiz Bakiye',
-        message: `${ad} bileti için bakiyeniz yetersiz. Mevcut: ${kullanici.bakiye} TL`,
+        message: `${ad} filminden ${adet} adet bilet için bakiyeniz yetersiz. Gerekli: ${toplamFiyat} TL, Mevcut: ${kullanici.bakiye} TL`,
         type: 'error'
       });
       return;
     }
 
-    // Backend Stored Procedure çağrısı
-    axios.post('http://127.0.0.1:8000/api/bilet-al/', { etkinlik_id: id })
+    axios.post('http://127.0.0.1:8000/api/bilet-al/', { etkinlik_id: id, adet: adet })
       .then(res => {
         setModalData({
           visible: true,
           title: 'İşlem Başarılı',
-          message: `${ad} biletiniz alındı.`,
+          message: res.data.message,
           type: 'success'
         });
         verileriGuncelle(); 
@@ -80,9 +80,9 @@ function App() {
           type: 'error'
         });
       });
-  }
+  } // Dışarıda kalan hatalı kod bloğu buradan temizlendi.
 
-  // Yeni eklenen yorum gönderme fonksiyonu (Sözdizimi hatası düzeltildi)
+  // Yeni eklenen yorum gönderme fonksiyonu
   const yorumGonder = (id, puan, metin) => {
     axios.post('http://127.0.0.1:8000/api/yorum-yap/', {
       etkinlik_id: id,
@@ -138,13 +138,28 @@ function App() {
                   <span style={{ color: '#2ecc71', fontWeight: 'bold', fontSize: '20px' }}>{etk.fiyat} TL</span>
                   <span style={{ color: '#aaa' }}>{etk.kapasite} Koltuk</span>
                 </div>
-                <button 
-                  onClick={() => biletSatinAl(etk.etkinlikid, etk.fiyat, etk.etkinlikadi)}
-                  disabled={etk.kapasite <= 0}
-                  style={{ width: '100%', marginTop: '20px', padding: '12px', backgroundColor: etk.kapasite > 0 ? '#e50914' : '#444', color: '#fff', border: 'none', cursor: 'pointer' }}
-                >
-                  {etk.kapasite > 0 ? 'Bilet Al' : 'Tükendi'}
-                </button>
+                
+                {/* Adet Seçimi ve Bilet Al Butonu */}
+                <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    max={etk.kapasite} 
+                    defaultValue="1" 
+                    id={`adet-${etk.etkinlikid}`}
+                    style={{ width: '60px', padding: '10px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '6px', textAlign: 'center' }}
+                  />
+                  <button 
+                    onClick={() => {
+                      const adet = parseInt(document.getElementById(`adet-${etk.etkinlikid}`).value) || 1;
+                      biletSatinAl(etk.etkinlikid, etk.fiyat, etk.etkinlikadi, adet);
+                    }}
+                    disabled={etk.kapasite <= 0}
+                    style={{ flexGrow: 1, padding: '12px', backgroundColor: etk.kapasite > 0 ? '#e50914' : '#444', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    {etk.kapasite > 0 ? 'Bilet Al' : 'Tükendi'}
+                  </button>
+                </div>
 
                 {/* Her Filmin Altındaki Yorum Yapma Alanı */}
                 <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #333' }}>
@@ -181,9 +196,10 @@ function App() {
         {biletlerim.length > 0 && (
            <div style={{ marginTop: '50px' }}>
              <h2 style={{ borderLeft: '5px solid #2ecc71', paddingLeft: '15px' }}>Biletlerim</h2>
-             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginTop: '20px' }}>
+             {/* BİLETLERİM KISMINA SCROLL EKLENDİ (maxHeight ve overflowY) */}
+             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', marginTop: '20px', maxHeight: '250px', overflowY: 'auto', paddingRight: '10px' }}>
                 {biletlerim.map((b, i) => (
-                  <div key={i} style={{ backgroundColor: '#222', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #2ecc71' }}>
+                  <div key={i} style={{ backgroundColor: '#222', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #2ecc71', minWidth: '160px' }}>
                     <b>{b.etkinlik_adi}</b> <br />
                     <small style={{ color: '#aaa' }}>{new Date(b.tarih).toLocaleDateString('tr-TR')}</small>
                   </div>
@@ -220,7 +236,7 @@ function App() {
         {/* Veritabanı Film Yorumları Paneli */}
         <div style={{ marginTop: '50px', backgroundColor: '#1a1a1a', padding: '25px', borderRadius: '15px', border: '1px solid #333' }}>
           <h2 style={{ color: '#c084fc', borderLeft: '5px solid #c084fc', paddingLeft: '15px' }}>Film Yorumları & Değerlendirmeler</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px', maxHeight: '300px', overflowY: 'auto', paddingRight: '10px' }}>
             {yorumlar.length > 0 ? yorumlar.map((y) => (
               <div key={y.id} style={{ backgroundColor: '#111', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #c084fc', textAlign: 'left' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
@@ -236,7 +252,8 @@ function App() {
         {/* Trigger Logları */}
         <div style={{ marginTop: '50px' }}>
           <h2 style={{ borderLeft: '5px solid #f1c40f', paddingLeft: '15px' }}>Hesap Gecmisi (Trigger Loglari)</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px' }}>
+          {/* LOGLAR KISMINA SCROLL EKLENDİ (maxHeight ve overflowY) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px', maxHeight: '300px', overflowY: 'auto', paddingRight: '10px' }}>
             {loglar.map((l, i) => (
               <div key={i} style={{ backgroundColor: '#111', padding: '12px', borderRadius: '8px', border: '1px solid #333', textAlign: 'left' }}>
                 <span style={{ color: l.tip === 'BAKIYE_YUKLEME' ? '#2ecc71' : '#e50914', fontWeight: 'bold' }}>
