@@ -99,3 +99,45 @@ def islem_gecmisi(request, kullanici_id):
             "tarih": row[6]
         })
     return Response(result)
+
+
+
+
+@api_view(['GET'])
+def tum_yorumlar(request):
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT y.YorumID, e.EtkinlikAdi, k.AdSoyad, y.Puan, y.YorumMetni, y.YorumTarihi 
+            FROM FilmYorumlari y
+            JOIN etkinlikler e ON y.EtkinlikID = e.EtkinlikID
+            JOIN kullanicilar k ON y.KullaniciID = k.KullaniciID
+            ORDER BY y.YorumTarihi DESC
+        """)
+        rows = cursor.fetchall()
+        
+    result = []
+    for row in rows:
+        result.append({
+            "id": row[0],
+            "film_adi": row[1],
+            "yazan": row[2],
+            "puan": row[3],
+            "metin": row[4],
+            "tarih": row[5]
+        })
+    return Response(result)
+
+@api_view(['POST'])
+def yorum_yap(request):
+    kullanici_id = 1  # Projedeki sabit kullanıcı ID'si
+    etkinlik_id = request.data.get('etkinlik_id')
+    puan = request.data.get('puan')
+    yorum_metni = request.data.get('yorum_metni')
+    
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO FilmYorumlari (KullaniciID, EtkinlikID, Puan, YorumMetni)
+            VALUES (%s, %s, %s, %s)
+        """, [kullanici_id, etkinlik_id, puan, yorum_metni])
+        
+    return Response({"message": "Yorum başarıyla eklendi!"})

@@ -8,10 +8,11 @@ function App() {
   const [modalData, setModalData] = useState({ visible: false, title: '', message: '', type: '' });
   const [analiz, setAnaliz] = useState([]);
   const [loglar, setLoglar] = useState([]);
+  const [yorumlar, setYorumlar] = useState([]);
 
   const closeModal = () => setModalData({ ...modalData, visible: false });
 
-  // herseyi tek fonksiyonda topladim ki bilet alinca hepsini yenileyebileyim
+  // Tüm verileri tek fonksiyon üzerinden güncelliyoruz
   const verileriGuncelle = () => {
     axios.get('http://127.0.0.1:8000/api/etkinlikler/').then(res => setEtkinlikler(res.data))
     axios.get('http://127.0.0.1:8000/api/kullanici/1/').then(res => setKullanici(res.data))
@@ -19,10 +20,12 @@ function App() {
       .then(res => setBiletlerim(res.data))
       .catch(() => console.log("bilet yok henüz"))
 
-    // burası sql viewdan cekiyor
+    // SQL View verileri
     axios.get('http://127.0.0.1:8000/api/analiz/').then(res => setAnaliz(res.data));
-    // burasıda trigger loglari icin
+    // Trigger Logları verileri
     axios.get('http://127.0.0.1:8000/api/loglar/1/').then(res => setLoglar(res.data));
+    // Yeni eklenen film yorumları verileri
+    axios.get('http://127.0.0.1:8000/api/yorumlar/').then(res => setYorumlar(res.data));
   }
 
   useEffect(() => {
@@ -57,7 +60,7 @@ function App() {
       return;
     }
 
-    // backenddeki stored procedure burdan tetikleniyor
+    // Backend Stored Procedure çağrısı
     axios.post('http://127.0.0.1:8000/api/bilet-al/', { etkinlik_id: id })
       .then(res => {
         setModalData({
@@ -78,6 +81,20 @@ function App() {
         });
       });
   }
+
+  // Yeni eklenen yorum gönderme fonksiyonu (Sözdizimi hatası düzeltildi)
+  const yorumGonder = (id, puan, metin) => {
+    axios.post('http://127.0.0.1:8000/api/yorum-yap/', {
+      etkinlik_id: id,
+      puan: puan,
+      yorum_metni: metin
+    })
+    .then(res => {
+      alert(res.data.message);
+      verileriGuncelle();
+    })
+    .catch(() => alert("Yorum yaparken bir hata oluştu."));
+  };
 
   return (
     <div style={{ backgroundColor: '#0f0f0f', color: '#fff', minHeight: '100vh', fontFamily: 'Segoe UI, sans-serif' }}>
@@ -128,6 +145,35 @@ function App() {
                 >
                   {etk.kapasite > 0 ? 'Bilet Al' : 'Tükendi'}
                 </button>
+
+                {/* Her Filmin Altındaki Yorum Yapma Alanı */}
+                <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #333' }}>
+                  <input 
+                    type="text" 
+                    placeholder="Film hakkında yorumunuz..." 
+                    id={`yorum-${etk.etkinlikid}`}
+                    style={{ width: '70%', padding: '8px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '6px', boxSizing: 'border-box' }}
+                  />
+                  <select id={`puan-${etk.etkinlikid}`} style={{ width: '25%', padding: '8px', marginLeft: '5%', backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '6px', boxSizing: 'border-box' }}>
+                    <option value="5">5 ⭐</option>
+                    <option value="4">4 ⭐</option>
+                    <option value="3">3 ⭐</option>
+                    <option value="2">2 ⭐</option>
+                    <option value="1">1 ⭐</option>
+                  </select>
+                  <button 
+                    onClick={() => {
+                      const metin = document.getElementById(`yorum-${etk.etkinlikid}`).value;
+                      const puan = document.getElementById(`puan-${etk.etkinlikid}`).value;
+                      if(!metin.trim()) return alert("Lütfen yorum metni yazın!");
+                      yorumGonder(etk.etkinlikid, puan, metin);
+                      document.getElementById(`yorum-${etk.etkinlikid}`).value = '';
+                    }}
+                    style={{ width: '100%', marginTop: '10px', padding: '8px', backgroundColor: '#2ecc71', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                  >
+                    Yorum Paylaş
+                  </button>
+                </div>
             </div>
           ))}
         </div>
@@ -146,7 +192,7 @@ function App() {
            </div>
         )}
 
-        {/*sql view kullanimi burası */}
+        {/* SQL View kullanımı */}
         <div style={{ marginTop: '50px', backgroundColor: '#1a1a1a', padding: '25px', borderRadius: '15px', border: '1px solid #333' }}>
           <h2 style={{ color: '#e50914' }}>Satis Analizi (SQL View)</h2>
           <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '15px' }}>
@@ -171,12 +217,28 @@ function App() {
           </table>
         </div>
 
-        {/* burasıda loglarin ciktigi yer trigger kaniti icin */}
+        {/* Veritabanı Film Yorumları Paneli */}
+        <div style={{ marginTop: '50px', backgroundColor: '#1a1a1a', padding: '25px', borderRadius: '15px', border: '1px solid #333' }}>
+          <h2 style={{ color: '#c084fc', borderLeft: '5px solid #c084fc', paddingLeft: '15px' }}>Film Yorumları & Değerlendirmeler</h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
+            {yorumlar.length > 0 ? yorumlar.map((y) => (
+              <div key={y.id} style={{ backgroundColor: '#111', padding: '15px', borderRadius: '10px', borderLeft: '4px solid #c084fc', textAlign: 'left' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+                  <b style={{ color: '#fff' }}>{y.film_adi} <span style={{ color: '#f1c40f', marginLeft: '10px' }}>{"⭐".repeat(y.puan)}</span></b>
+                  <small style={{ color: '#555' }}>{new Date(y.tarih).toLocaleString('tr-TR')}</small>
+                </div>
+                <p style={{ margin: 0, color: '#bbb' }}><i style={{ color: '#c084fc' }}>{y.yazan}:</i> "{y.metin}"</p>
+              </div>
+            )) : <p style={{ color: '#555', textAlign: 'left' }}>Henüz yorum yapılmamış.</p>}
+          </div>
+        </div>
+
+        {/* Trigger Logları */}
         <div style={{ marginTop: '50px' }}>
           <h2 style={{ borderLeft: '5px solid #f1c40f', paddingLeft: '15px' }}>Hesap Gecmisi (Trigger Loglari)</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '20px' }}>
             {loglar.map((l, i) => (
-              <div key={i} style={{ backgroundColor: '#111', padding: '12px', borderRadius: '8px', border: '1px solid #333' }}>
+              <div key={i} style={{ backgroundColor: '#111', padding: '12px', borderRadius: '8px', border: '1px solid #333', textAlign: 'left' }}>
                 <span style={{ color: l.tip === 'BAKIYE_YUKLEME' ? '#2ecc71' : '#e50914', fontWeight: 'bold' }}>
                   {l.tip}
                 </span> 
@@ -186,6 +248,7 @@ function App() {
             ))}
           </div>
         </div>
+
       </div>
     </div>
   )

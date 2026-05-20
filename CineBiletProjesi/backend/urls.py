@@ -11,4 +11,6 @@ urlpatterns = [
     path('api/bakiye-ekle/', views.bakiye_ekle),
     path('api/analiz/', views.etkinlik_analizi),
     path('api/loglar/<int:kullanici_id>/', views.islem_gecmisi),
+    path('api/yorumlar/', views.tum_yorumlar),
+    path('api/yorum-yap/', views.yorum_yap),
 ]

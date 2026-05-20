@@ -42,3 +42,16 @@ class Kullanicilar(models.Model):
     class Meta:
         managed = False
         db_table = 'kullanicilar'
+
+
+class Filmyorumlari(models.Model):
+    yorumid = models.AutoField(db_column='YorumID', primary_key=True)
+    kullaniciid = models.IntegerField(db_column='KullaniciID', blank=True, null=True)
+    etkinlikid = models.IntegerField(db_column='EtkinlikID', blank=True, null=True)
+    puan = models.IntegerField(db_column='Puan', blank=True, null=True)
+    yorummetni = models.TextField(db_column='YorumMetni', blank=True, null=True)
+    yorumtarihi = models.DateTimeField(db_column='YorumTarihi', blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'filmyorumlari'
