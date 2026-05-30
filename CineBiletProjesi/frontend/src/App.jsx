@@ -2,14 +2,22 @@ import { useEffect, useState } from 'react'
 import axios from 'axios'
 
 function App() {
-  // --- AUTHENTICATION (GİRİŞ) STATELERİ ---
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [authMode, setAuthMode] = useState('login'); // 'login' veya 'register'
+  // --- AUTHENTICATION & LOCALSTORAGE ---
+  // Uygulama açıldığında localStorage'da kullanıcı var mı diye bakıyoruz
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('kullanici'));
+  const [authMode, setAuthMode] = useState('login'); 
   const [authForm, setAuthForm] = useState({ adsoyad: '', email: '', sifre: '' });
+
+  const [kullanici, setKullanici] = useState(() => {
+    const saved = localStorage.getItem('kullanici');
+    return saved ? JSON.parse(saved) : { id: null, adsoyad: '', bakiye: 0, rol: 'kullanici' };
+  });
+
+  // Profil form state'i
+  const [profilForm, setProfilForm] = useState({ adsoyad: kullanici?.adsoyad || '', sifre: '' });
 
   // --- UYGULAMA STATELERİ ---
   const [etkinlikler, setEtkinlikler] = useState([])
-  const [kullanici, setKullanici] = useState({ id: null, adsoyad: '', bakiye: 0, rol: 'kullanici' })
   const [biletlerim, setBiletlerim] = useState([])
   const [modalData, setModalData] = useState({ visible: false, title: '', message: '', type: '' });
   const [analiz, setAnaliz] = useState([]);
@@ -24,22 +32,25 @@ function App() {
 
   const closeModal = () => setModalData({ ...modalData, visible: false });
 
-  // --- GİRİŞ / KAYIT İŞLEMLERİ ---
+  // --- GİRİŞ / KAYIT / ÇIKIŞ ---
   const handleAuth = (e) => {
     e.preventDefault();
     if (authMode === 'login') {
       axios.post('http://127.0.0.1:8000/api/giris-yap/', { email: authForm.email, sifre: authForm.sifre })
         .then(res => {
-          setKullanici(res.data.kullanici);
+          const user = res.data.kullanici;
+          setKullanici(user);
+          setProfilForm({ adsoyad: user.adsoyad, sifre: '' });
           setIsLoggedIn(true);
-          setAuthForm({ adsoyad: '', email: '', sifre: '' }); // Formu temizle
+          localStorage.setItem('kullanici', JSON.stringify(user)); // Tarayıcıya kaydet
+          setAuthForm({ adsoyad: '', email: '', sifre: '' });
         })
         .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || "Giriş başarısız", type: 'error' }));
     } else {
       axios.post('http://127.0.0.1:8000/api/kayit-ol/', authForm)
         .then(res => {
           setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
-          setAuthMode('login'); // Kayıt olunca giriş ekranına at
+          setAuthMode('login');
         })
         .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || "Kayıt başarısız", type: 'error' }));
     }
@@ -48,30 +59,55 @@ function App() {
   const cikisYap = () => {
     setIsLoggedIn(false);
     setKullanici({ id: null, adsoyad: '', bakiye: 0, rol: 'kullanici' });
+    localStorage.removeItem('kullanici'); // Tarayıcıdan sil
     setAktifSekme('ana_sayfa');
+  };
+
+  // --- PROFİL GÜNCELLEME ---
+  const profilGuncelle = (e) => {
+    e.preventDefault();
+    axios.post('http://127.0.0.1:8000/api/profil-guncelle/', { 
+      kullanici_id: kullanici.id, 
+      adsoyad: profilForm.adsoyad, 
+      sifre: profilForm.sifre 
+    })
+    .then(res => {
+      setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
+      setProfilForm({ ...profilForm, sifre: '' }); // Şifre alanını temizle
+      verileriGuncelle();
+    })
+    .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || 'Güncelleme başarısız', type: 'error' }));
   };
 
   // --- VERİ ÇEKME ---
   const verileriGuncelle = () => {
-    if (!kullanici.id) return; // Kullanıcı yoksa veri çekme
+    if (!kullanici.id) return; 
 
     const ts = new Date().getTime(); 
     axios.get(`http://127.0.0.1:8000/api/etkinlikler/?t=${ts}`).then(res => setEtkinlikler(res.data))
-    axios.get(`http://127.0.0.1:8000/api/kullanici/${kullanici.id}/?t=${ts}`).then(res => setKullanici(prev => ({...prev, ...res.data})))
-    axios.get(`http://127.0.0.1:8000/api/biletlerim/${kullanici.id}/?t=${ts}`).then(res => setBiletlerim(res.data)).catch(() => console.log("bilet yok"))
     axios.get(`http://127.0.0.1:8000/api/yorumlar/?t=${ts}`).then(res => setYorumlar(res.data));
+    
+    // Kullanıcı bilgilerini güncelle ve localStorage'ı yenile
+    axios.get(`http://127.0.0.1:8000/api/kullanici/${kullanici.id}/?t=${ts}`).then(res => {
+      setKullanici(prev => {
+        const updatedUser = { ...prev, ...res.data };
+        localStorage.setItem('kullanici', JSON.stringify(updatedUser));
+        return updatedUser;
+      });
+    });
 
-    // Sadece adminse admin verilerini çek
+    axios.get(`http://127.0.0.1:8000/api/biletlerim/${kullanici.id}/?t=${ts}`).then(res => setBiletlerim(res.data)).catch(() => console.log("bilet yok"))
+
     if (kullanici.rol === 'admin') {
       axios.get(`http://127.0.0.1:8000/api/analiz/?t=${ts}`).then(res => setAnaliz(res.data));
       axios.get(`http://127.0.0.1:8000/api/loglar/${kullanici.id}/?t=${ts}`).then(res => setLoglar(res.data));
     }
   }
 
-  // Kullanıcı giriş yaptığında veya ID değiştiğinde verileri getir
   useEffect(() => {
     if (isLoggedIn && kullanici.id) {
       verileriGuncelle();
+      setProfilForm({ adsoyad: kullanici.adsoyad, sifre: '' });
     }
   }, [isLoggedIn, kullanici.id]);
 
@@ -91,7 +127,7 @@ function App() {
   const bakiyeYukle = () => {
     const miktar = prompt("Yüklemek istediğiniz tutarı giriniz:");
     if (miktar && !isNaN(miktar) && miktar > 0) {
-      axios.post('http://127.0.0.1:8000/api/bakiye-ekle/', { kullanici_id: kullanici.id, tutar: miktar }) // ID eklendi
+      axios.post('http://127.0.0.1:8000/api/bakiye-ekle/', { kullanici_id: kullanici.id, tutar: miktar })
         .then(res => {
           setModalData({ visible: true, title: 'Bakiye Yüklendi', message: res.data.message, type: 'success' });
           verileriGuncelle();
@@ -106,7 +142,7 @@ function App() {
     const toplamFiyat = fiyat * adet;
     if (kullanici.bakiye < toplamFiyat) return setModalData({ visible: true, title: 'Yetersiz Bakiye', message: `Mevcut: ${kullanici.bakiye} TL`, type: 'error' });
 
-    axios.post('http://127.0.0.1:8000/api/bilet-al/', { kullanici_id: kullanici.id, etkinlik_id: id, koltuklar: koltukDizisi }) // ID eklendi
+    axios.post('http://127.0.0.1:8000/api/bilet-al/', { kullanici_id: kullanici.id, etkinlik_id: id, koltuklar: koltukDizisi })
       .then(res => {
         setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
         setSeciliKoltuklar([]); 
@@ -117,13 +153,13 @@ function App() {
 
   const biletIptalEt = (etkinlik_id, tarih) => {
     if (!window.confirm("Bileti iptal etmek istediğinize emin misiniz?")) return;
-    axios.post('http://127.0.0.1:8000/api/bilet-iptal/', { kullanici_id: kullanici.id, etkinlik_id, tarih }) // ID eklendi
+    axios.post('http://127.0.0.1:8000/api/bilet-iptal/', { kullanici_id: kullanici.id, etkinlik_id, tarih })
       .then(res => { alert(res.data.message); setTimeout(() => verileriGuncelle(), 300); })
       .catch(err => alert("Hata: " + (err.response?.data?.error || "Bilinmeyen hata")));
   };  
 
   const yorumGonder = (id, puan, metin) => {
-    axios.post('http://127.0.0.1:8000/api/yorum-yap/', { kullanici_id: kullanici.id, etkinlik_id: id, puan: puan, yorum_metni: metin }) // ID eklendi
+    axios.post('http://127.0.0.1:8000/api/yorum-yap/', { kullanici_id: kullanici.id, etkinlik_id: id, puan: puan, yorum_metni: metin })
     .then(res => { alert(res.data.message); verileriGuncelle(); })
     .catch(() => alert("Yorum yapılamadı."));
   };
@@ -143,7 +179,6 @@ function App() {
   if (!isLoggedIn) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#09090b', color: '#fff', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
-        {/* Mesaj Modalı (Hata gösterimleri için buraya da lazım) */}
         {modalData.visible && (
           <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999, backdropFilter: 'blur(4px)' }}>
             <div style={{ backgroundColor: '#18181b', padding: '32px', borderRadius: '12px', textAlign: 'center', border: '1px solid #27272a', minWidth: '320px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
@@ -184,7 +219,7 @@ function App() {
   }
 
   // ==========================================
-  // ANA UYGULAMA EKRANI (GİRİŞ YAPILDIKTAN SONRA)
+  // ANA UYGULAMA EKRANI
   // ==========================================
   return (
     <div style={{ backgroundColor: '#09090b', color: '#fafafa', minHeight: '100vh', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
@@ -321,8 +356,10 @@ function App() {
             <button title="Biletlerim" onClick={() => setAktifSekme('biletlerim')} style={getTabStyle('biletlerim')}>
               <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><line x1="13" x2="13" y1="7" y2="17"/><line x1="9" x2="9" y1="7" y2="17"/></svg>
             </button>
+            <button title="Hesabım" onClick={() => setAktifSekme('hesabim')} style={getTabStyle('hesabim')}>
+              <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            </button>
             
-            {/* SADECE ADMIN GÖREBİLİR */}
             {kullanici.rol === 'admin' && (
               <button title="Admin Paneli" onClick={() => setAktifSekme('admin')} style={getTabStyle('admin')}>
                 <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
@@ -463,6 +500,28 @@ function App() {
             ) : (
               <div style={{ padding: '40px 24px', textAlign: 'center', color: '#71717a' }}>Kayıtlı bilet bulunamadı.</div>
             )}
+          </div>
+        )}
+
+        {/* YENİ: HESABIM SEKMESİ */}
+        {aktifSekme === 'hesabim' && (
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <div style={{ backgroundColor: '#18181b', padding: '40px', borderRadius: '16px', width: '100%', maxWidth: '400px', border: '1px solid #27272a' }}>
+              <h2 style={{ margin: '0 0 24px 0', fontSize: '20px', fontWeight: '600' }}>Profil Bilgileri</h2>
+              <form onSubmit={profilGuncelle} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: '#a1a1aa', marginBottom: '8px' }}>Ad Soyad</label>
+                  <input required type="text" value={profilForm.adsoyad} onChange={e => setProfilForm({...profilForm, adsoyad: e.target.value})} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '13px', color: '#a1a1aa', marginBottom: '8px' }}>Yeni Şifre (İsteğe Bağlı)</label>
+                  <input type="password" placeholder="Değiştirmek istemiyorsanız boş bırakın" value={profilForm.sifre} onChange={e => setProfilForm({...profilForm, sifre: e.target.value})} style={{ width: '100%', padding: '14px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff', fontSize: '14px', boxSizing: 'border-box' }} />
+                </div>
+                <button type="submit" style={{ padding: '14px', backgroundColor: '#fff', color: '#000', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', marginTop: '16px', fontSize: '15px', transition: '0.2s' }}>
+                  Bilgileri Kaydet
+                </button>
+              </form>
+            </div>
           </div>
         )}
 
