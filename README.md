@@ -46,7 +46,7 @@ Proje kök dizininde bulunan `cinebilet.sql` dosyasını MySQL Workbench veya te
 
 ### 2. Backend (API) Kurulumu
 ```bash
-cd backend
+cd CineBiletProjesi
 python -m venv venv
 
 # Windows için:
