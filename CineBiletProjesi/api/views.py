@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from django.db import connection
 from .models import Etkinlikler, Kullanicilar, Biletler
 from .serializers import EtkinlikSerializer
+from django.contrib.auth.hashers import make_password, check_password
 
 
 @api_view(['GET'])
@@ -47,12 +48,13 @@ def kullanici_detay(request, pk):
     except:
         return Response({"error": "kullanici bulunamadi"}, status=404)
 
+
 @api_view(['GET'])
 def biletlerim(request, kullanici_id):
     with connection.cursor() as cursor:
-        # Sorguya e.seans_saati eklendi
         cursor.execute("""
-            SELECT e.EtkinlikID, e.EtkinlikAdi, b.SatinAlmaTarihi, COUNT(b.BiletID) as Adet, s.SalonAdi, e.seans_saati
+            SELECT e.EtkinlikID, e.EtkinlikAdi, b.SatinAlmaTarihi, COUNT(b.BiletID) as Adet, s.SalonAdi, e.seans_saati,
+                   GROUP_CONCAT(b.koltuk_no SEPARATOR ', ') as koltuklar
             FROM biletler b 
             JOIN etkinlikler e ON b.EtkinlikID = e.EtkinlikID
             LEFT JOIN Salonlar s ON e.SalonID = s.SalonID
@@ -68,15 +70,15 @@ def biletlerim(request, kullanici_id):
         "tarih": r[2].strftime('%Y-%m-%d %H:%M:%S'), 
         "adet": r[3], 
         "salon_adi": r[4], 
-        # Saat verisi eklendi
-        "seans_saati": str(r[5]) if r[5] else None
+        "seans_saati": str(r[5]) if r[5] else None,
+        "koltuklar": r[6] if r[6] else "-" # Koltuklar eklendi
     } for r in rows]
     return Response(sonuc)
 
 
 @api_view(['POST'])
 def bakiye_ekle(request):
-    kullanici_id = 1
+    kullanici_id = request.data.get('kullanici_id')
     tutar = request.data.get('tutar', 0)
     
     try:
@@ -153,7 +155,7 @@ def tum_yorumlar(request):
 
 @api_view(['POST'])
 def yorum_yap(request):
-    kullanici_id = 1  # Projedeki sabit kullanıcı ID'si
+    kullanici_id = request.data.get('kullanici_id') # Projedeki sabit kullanıcı ID'si
     etkinlik_id = request.data.get('etkinlik_id')
     puan = request.data.get('puan')
     yorum_metni = request.data.get('yorum_metni')
@@ -171,15 +173,19 @@ def yorum_yap(request):
 
 @api_view(['POST'])
 def bilet_al(request):
-    kullanici_id = 1
+    kullanici_id = request.data.get('kullanici_id') # Artık sabit 1 değil, giriş yapan kullanıcı
     etkinlik_id = request.data.get('etkinlik_id')
-    # Arayüzden gelen 'adet' bilgisini yakalıyoruz (Gelmezse varsayılan 1)
-    adet = int(request.data.get('adet', 1)) 
+    secilen_koltuklar = request.data.get('koltuklar', []) 
+    adet = len(secilen_koltuklar)
     
+    if adet == 0:
+        return Response({"error": "Lütfen en az 1 koltuk seçin."}, status=400)
+
     try:
         with connection.cursor() as cursor:
-            # Stored Procedure'e artık 3 parametre (ID, Etkinlik, Adet) gönderiyoruz
-            cursor.callproc('sp_BiletSatinAl', [kullanici_id, etkinlik_id, adet])
+            for koltuk in secilen_koltuklar:
+                cursor.callproc('sp_BiletSatinAl', [kullanici_id, etkinlik_id, 1, koltuk])
+                
         return Response({"message": f"{adet} adet bilet başarıyla alındı!"})
     except Exception as e:
         return Response({"error": str(e)}, status=400)
@@ -192,5 +198,86 @@ def bilet_iptal(request):
         with connection.cursor() as cursor:
             cursor.callproc('sp_BiletIptalGrubu', [1, request.data.get('etkinlik_id'), request.data.get('tarih')])
         return Response({"message": "Bilet iptal edildi ve ücret iade edildi!"})
+    except Exception as e:
+        return Response({"error": str(e)}, status=400)
+    
+
+
+@api_view(['GET'])
+def dolu_koltuklar(request, etkinlik_id):
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT koltuk_no FROM biletler 
+            WHERE EtkinlikID = %s AND Durum = 'Aktif' AND koltuk_no IS NOT NULL
+        """, [etkinlik_id])
+        rows = cursor.fetchall()
+        
+    koltuklar = [row[0] for row in rows]
+    return Response(koltuklar)
+
+
+
+
+
+@api_view(['POST'])
+def kayit_ol(request):
+    adsoyad = request.data.get('adsoyad')
+    email = request.data.get('email')
+    sifre = request.data.get('sifre')
+    
+    if not adsoyad or not email or not sifre:
+        return Response({"error": "Lütfen tüm alanları doldurun."}, status=400)
+        
+    hashed_sifre = make_password(sifre) # Şifreyi şifreliyoruz
+    
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO kullanicilar (AdSoyad, Bakiye, email, sifre, rol) 
+                VALUES (%s, 0, %s, %s, 'kullanici')
+            """, [adsoyad, email, hashed_sifre])
+        return Response({"message": "Kayıt başarılı! Giriş yapabilirsiniz."})
+    except Exception as e:
+     
+        return Response({"error": str(e)}, status=400)
+
+@api_view(['POST'])
+def giris_yap(request):
+    email = request.data.get('email')
+    sifre = request.data.get('sifre')
+    
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT KullaniciID, AdSoyad, Bakiye, sifre, rol FROM kullanicilar WHERE email = %s", [email])
+        row = cursor.fetchone()
+        
+    if row:
+        db_sifre = row[3]
+        # Eğer şifre uyuşuyorsa (veya test için düz metin 123456 girdiysek)
+        if check_password(sifre, db_sifre) or sifre == db_sifre:
+            kullanici_bilgisi = {
+                "id": row[0],
+                "adsoyad": row[1],
+                "bakiye": row[2],
+                "rol": row[4]
+            }
+            return Response({"message": "Giriş başarılı", "kullanici": kullanici_bilgisi})
+            
+    return Response({"error": "E-posta veya şifre hatalı."}, status=400)
+
+
+@api_view(['POST'])
+def profil_guncelle(request):
+    kullanici_id = request.data.get('kullanici_id')
+    adsoyad = request.data.get('adsoyad')
+    sifre = request.data.get('sifre')
+
+    try:
+        with connection.cursor() as cursor:
+            if sifre:
+                hashed_sifre = make_password(sifre)
+                cursor.execute("UPDATE kullanicilar SET AdSoyad = %s, sifre = %s WHERE KullaniciID = %s", [adsoyad, hashed_sifre, kullanici_id])
+            else:
+                cursor.execute("UPDATE kullanicilar SET AdSoyad = %s WHERE KullaniciID = %s", [adsoyad, kullanici_id])
+        return Response({"message": "Profil başarıyla güncellendi!"})
     except Exception as e:
         return Response({"error": str(e)}, status=400)

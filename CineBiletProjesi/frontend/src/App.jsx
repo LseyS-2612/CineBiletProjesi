@@ -2,8 +2,14 @@ import { useEffect, useState } from 'react'
 import axios from 'axios'
 
 function App() {
+  // --- AUTHENTICATION (GİRİŞ) STATELERİ ---
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' veya 'register'
+  const [authForm, setAuthForm] = useState({ adsoyad: '', email: '', sifre: '' });
+
+  // --- UYGULAMA STATELERİ ---
   const [etkinlikler, setEtkinlikler] = useState([])
-  const [kullanici, setKullanici] = useState({ adsoyad: '', bakiye: 0 })
+  const [kullanici, setKullanici] = useState({ id: null, adsoyad: '', bakiye: 0, rol: 'kullanici' })
   const [biletlerim, setBiletlerim] = useState([])
   const [modalData, setModalData] = useState({ visible: false, title: '', message: '', type: '' });
   const [analiz, setAnaliz] = useState([]);
@@ -13,30 +19,79 @@ function App() {
   const [secilenFilm, setSecilenFilm] = useState(null);
   const [aktifSekme, setAktifSekme] = useState('ana_sayfa'); 
 
+  const [seciliKoltuklar, setSeciliKoltuklar] = useState([]);
+  const [doluKoltuklar, setDoluKoltuklar] = useState([]);
+
   const closeModal = () => setModalData({ ...modalData, visible: false });
 
-  const verileriGuncelle = () => {
-    const ts = new Date().getTime(); 
-    
-    axios.get(`http://127.0.0.1:8000/api/etkinlikler/?t=${ts}`).then(res => setEtkinlikler(res.data))
-    axios.get(`http://127.0.0.1:8000/api/kullanici/1/?t=${ts}`).then(res => setKullanici(res.data))
-    axios.get(`http://127.0.0.1:8000/api/biletlerim/1/?t=${ts}`)
-      .then(res => setBiletlerim(res.data))
-      .catch(() => console.log("bilet yok henüz"))
+  // --- GİRİŞ / KAYIT İŞLEMLERİ ---
+  const handleAuth = (e) => {
+    e.preventDefault();
+    if (authMode === 'login') {
+      axios.post('http://127.0.0.1:8000/api/giris-yap/', { email: authForm.email, sifre: authForm.sifre })
+        .then(res => {
+          setKullanici(res.data.kullanici);
+          setIsLoggedIn(true);
+          setAuthForm({ adsoyad: '', email: '', sifre: '' }); // Formu temizle
+        })
+        .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || "Giriş başarısız", type: 'error' }));
+    } else {
+      axios.post('http://127.0.0.1:8000/api/kayit-ol/', authForm)
+        .then(res => {
+          setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
+          setAuthMode('login'); // Kayıt olunca giriş ekranına at
+        })
+        .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || "Kayıt başarısız", type: 'error' }));
+    }
+  };
 
-    axios.get(`http://127.0.0.1:8000/api/analiz/?t=${ts}`).then(res => setAnaliz(res.data));
-    axios.get(`http://127.0.0.1:8000/api/loglar/1/?t=${ts}`).then(res => setLoglar(res.data));
+  const cikisYap = () => {
+    setIsLoggedIn(false);
+    setKullanici({ id: null, adsoyad: '', bakiye: 0, rol: 'kullanici' });
+    setAktifSekme('ana_sayfa');
+  };
+
+  // --- VERİ ÇEKME ---
+  const verileriGuncelle = () => {
+    if (!kullanici.id) return; // Kullanıcı yoksa veri çekme
+
+    const ts = new Date().getTime(); 
+    axios.get(`http://127.0.0.1:8000/api/etkinlikler/?t=${ts}`).then(res => setEtkinlikler(res.data))
+    axios.get(`http://127.0.0.1:8000/api/kullanici/${kullanici.id}/?t=${ts}`).then(res => setKullanici(prev => ({...prev, ...res.data})))
+    axios.get(`http://127.0.0.1:8000/api/biletlerim/${kullanici.id}/?t=${ts}`).then(res => setBiletlerim(res.data)).catch(() => console.log("bilet yok"))
     axios.get(`http://127.0.0.1:8000/api/yorumlar/?t=${ts}`).then(res => setYorumlar(res.data));
+
+    // Sadece adminse admin verilerini çek
+    if (kullanici.rol === 'admin') {
+      axios.get(`http://127.0.0.1:8000/api/analiz/?t=${ts}`).then(res => setAnaliz(res.data));
+      axios.get(`http://127.0.0.1:8000/api/loglar/${kullanici.id}/?t=${ts}`).then(res => setLoglar(res.data));
+    }
   }
 
+  // Kullanıcı giriş yaptığında veya ID değiştiğinde verileri getir
   useEffect(() => {
-    verileriGuncelle()
-  }, [])
+    if (isLoggedIn && kullanici.id) {
+      verileriGuncelle();
+    }
+  }, [isLoggedIn, kullanici.id]);
 
+  useEffect(() => {
+    if (secilenFilm) {
+      axios.get(`http://127.0.0.1:8000/api/dolu-koltuklar/${secilenFilm.etkinlikid}/`)
+        .then(res => setDoluKoltuklar(res.data))
+        .catch(err => console.log(err));
+    } else {
+      setSeciliKoltuklar([]);
+      setDoluKoltuklar([]);
+      verileriGuncelle();
+    }
+  }, [secilenFilm]);
+
+  // --- KULLANICI İŞLEMLERİ ---
   const bakiyeYukle = () => {
     const miktar = prompt("Yüklemek istediğiniz tutarı giriniz:");
     if (miktar && !isNaN(miktar) && miktar > 0) {
-      axios.post('http://127.0.0.1:8000/api/bakiye-ekle/', { tutar: miktar })
+      axios.post('http://127.0.0.1:8000/api/bakiye-ekle/', { kullanici_id: kullanici.id, tutar: miktar }) // ID eklendi
         .then(res => {
           setModalData({ visible: true, title: 'Bakiye Yüklendi', message: res.data.message, type: 'success' });
           verileriGuncelle();
@@ -45,32 +100,30 @@ function App() {
     }
   };
 
-  const biletSatinAl = (id, fiyat, ad, adet) => {
+  const biletSatinAl = (id, fiyat, ad, koltukDizisi) => {
+    const adet = koltukDizisi.length;
+    if (adet === 0) return setModalData({ visible: true, title: 'Uyarı', message: 'Koltuk seçiniz.', type: 'error' });
     const toplamFiyat = fiyat * adet;
-    if (kullanici.bakiye < toplamFiyat) {
-      setModalData({ visible: true, title: 'Yetersiz Bakiye', message: `Bakiyeniz yetersiz. Gerekli: ${toplamFiyat} TL, Mevcut: ${kullanici.bakiye} TL`, type: 'error' });
-      return;
-    }
+    if (kullanici.bakiye < toplamFiyat) return setModalData({ visible: true, title: 'Yetersiz Bakiye', message: `Mevcut: ${kullanici.bakiye} TL`, type: 'error' });
 
-    axios.post('http://127.0.0.1:8000/api/bilet-al/', { etkinlik_id: id, adet: adet })
+    axios.post('http://127.0.0.1:8000/api/bilet-al/', { kullanici_id: kullanici.id, etkinlik_id: id, koltuklar: koltukDizisi }) // ID eklendi
       .then(res => {
         setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
+        setSeciliKoltuklar([]); 
         setTimeout(() => verileriGuncelle(), 300);
       })
-      .catch(err => {
-        setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || 'Hata oluştu', type: 'error' });
-      });
+      .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || 'Hata oluştu', type: 'error' }));
   }
 
   const biletIptalEt = (etkinlik_id, tarih) => {
     if (!window.confirm("Bileti iptal etmek istediğinize emin misiniz?")) return;
-    axios.post('http://127.0.0.1:8000/api/bilet-iptal/', { etkinlik_id, tarih })
+    axios.post('http://127.0.0.1:8000/api/bilet-iptal/', { kullanici_id: kullanici.id, etkinlik_id, tarih }) // ID eklendi
       .then(res => { alert(res.data.message); setTimeout(() => verileriGuncelle(), 300); })
       .catch(err => alert("Hata: " + (err.response?.data?.error || "Bilinmeyen hata")));
   };  
 
   const yorumGonder = (id, puan, metin) => {
-    axios.post('http://127.0.0.1:8000/api/yorum-yap/', { etkinlik_id: id, puan: puan, yorum_metni: metin })
+    axios.post('http://127.0.0.1:8000/api/yorum-yap/', { kullanici_id: kullanici.id, etkinlik_id: id, puan: puan, yorum_metni: metin }) // ID eklendi
     .then(res => { alert(res.data.message); verileriGuncelle(); })
     .catch(() => alert("Yorum yapılamadı."));
   };
@@ -78,16 +131,61 @@ function App() {
   const getTabStyle = (sekmeAdi) => ({
     backgroundColor: aktifSekme === sekmeAdi ? 'rgba(229, 9, 20, 0.1)' : 'transparent',
     color: aktifSekme === sekmeAdi ? '#e50914' : '#a1a1aa',
-    border: 'none',
-    padding: '10px 14px',
-    borderRadius: '8px',
-    cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
+    border: 'none', padding: '10px 14px', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center'
   });
 
+  const satirlar = ['A', 'B', 'C', 'D', 'E'];
+  const sutunlar = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+  // ==========================================
+  // EĞER GİRİŞ YAPILMAMIŞSA SADECE LOGİN EKRANI
+  // ==========================================
+  if (!isLoggedIn) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', backgroundColor: '#09090b', color: '#fff', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+        {/* Mesaj Modalı (Hata gösterimleri için buraya da lazım) */}
+        {modalData.visible && (
+          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9999, backdropFilter: 'blur(4px)' }}>
+            <div style={{ backgroundColor: '#18181b', padding: '32px', borderRadius: '12px', textAlign: 'center', border: '1px solid #27272a', minWidth: '320px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+              <h2 style={{ color: modalData.type === 'success' ? '#10b981' : '#ef4444', margin: '0 0 16px 0', fontSize: '20px' }}>{modalData.title}</h2>
+              <p style={{ margin: '0 0 24px 0', color: '#a1a1aa', fontSize: '15px' }}>{modalData.message}</p>
+              <button onClick={closeModal} style={{ backgroundColor: '#fff', color: '#000', border: 'none', padding: '10px 24px', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '14px' }}>Kapat</button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ backgroundColor: '#18181b', padding: '40px', borderRadius: '16px', width: '100%', maxWidth: '400px', border: '1px solid #27272a', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+          <h2 style={{ textAlign: 'center', color: '#e50914', margin: '0 0 8px 0', fontSize: '28px', fontWeight: '800', letterSpacing: '-0.5px' }}>CINEBILET</h2>
+          <h3 style={{ textAlign: 'center', margin: '0 0 32px 0', fontWeight: '500', color: '#a1a1aa', fontSize: '16px' }}>
+            {authMode === 'login' ? 'Hesabınıza Giriş Yapın' : 'Yeni Hesap Oluşturun'}
+          </h3>
+
+          <form onSubmit={handleAuth} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {authMode === 'register' && (
+              <input required type="text" placeholder="Ad Soyad" value={authForm.adsoyad} onChange={e => setAuthForm({...authForm, adsoyad: e.target.value})} style={{ padding: '14px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff', fontSize: '14px' }} />
+            )}
+            <input required type="email" placeholder="E-posta Adresi" value={authForm.email} onChange={e => setAuthForm({...authForm, email: e.target.value})} style={{ padding: '14px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff', fontSize: '14px' }} />
+            <input required type="password" placeholder="Şifre" value={authForm.sifre} onChange={e => setAuthForm({...authForm, sifre: e.target.value})} style={{ padding: '14px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff', fontSize: '14px' }} />
+
+            <button type="submit" style={{ padding: '14px', backgroundColor: '#e50914', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', marginTop: '8px', fontSize: '15px', transition: '0.2s' }}>
+              {authMode === 'login' ? 'Giriş Yap' : 'Kayıt Ol'}
+            </button>
+          </form>
+
+          <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '14px', color: '#a1a1aa' }}>
+            {authMode === 'login' ? 'Hesabınız yok mu? ' : 'Zaten hesabınız var mı? '}
+            <span style={{ color: '#fff', cursor: 'pointer', fontWeight: '500' }} onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>
+              {authMode === 'login' ? 'Kayıt Ol' : 'Giriş Yap'}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // ANA UYGULAMA EKRANI (GİRİŞ YAPILDIKTAN SONRA)
+  // ==========================================
   return (
     <div style={{ backgroundColor: '#09090b', color: '#fafafa', minHeight: '100vh', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
       
@@ -114,9 +212,9 @@ function App() {
       {/* Film İnceleme ve Bilet Alma Modalı */}
       {secilenFilm && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9998, backdropFilter: 'blur(4px)' }}>
-          <div style={{ backgroundColor: '#18181b', padding: '32px', borderRadius: '16px', border: '1px solid #27272a', width: '420px', maxWidth: '90%', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+          <div style={{ backgroundColor: '#18181b', padding: '32px', borderRadius: '16px', border: '1px solid #27272a', width: '500px', maxWidth: '95%', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
             
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
               <div>
                 <h2 style={{ color: '#fff', margin: '0 0 8px 0', fontSize: '22px' }}>{secilenFilm.etkinlikadi}</h2>
                 <div style={{ display: 'flex', gap: '12px', fontSize: '13px', color: '#a1a1aa' }}>
@@ -127,27 +225,60 @@ function App() {
               <button onClick={() => setSecilenFilm(null)} style={{ background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', fontSize: '20px' }}>✕</button>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #27272a' }}>
-              <div>
-                <div style={{ fontSize: '12px', color: '#71717a', marginBottom: '4px' }}>Fiyat</div>
-                <div style={{ color: '#fff', fontWeight: '600', fontSize: '24px' }}>{secilenFilm.fiyat} ₺</div>
+            <div style={{ marginBottom: '24px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', backgroundColor: '#09090b', padding: '20px 10px', borderRadius: '8px', border: '1px solid #27272a' }}>
+                <div style={{ width: '80%', height: '4px', backgroundColor: '#3f3f46', borderRadius: '2px', marginBottom: '16px', boxShadow: '0 4px 10px rgba(255,255,255,0.1)' }}></div>
+                <span style={{ fontSize: '10px', color: '#71717a', marginBottom: '8px', letterSpacing: '2px' }}>PERDE</span>
+                {satirlar.map(satir => (
+                  <div key={satir} style={{ display: 'flex', gap: '6px' }}>
+                    {sutunlar.map(sutun => {
+                      const koltukNo = `${satir}${sutun}`;
+                      const isDolu = doluKoltuklar.includes(koltukNo);
+                      const isSecili = seciliKoltuklar.includes(koltukNo);
+                      return (
+                        <button
+                          key={koltukNo}
+                          disabled={isDolu}
+                          onClick={() => {
+                            if (isSecili) setSeciliKoltuklar(seciliKoltuklar.filter(k => k !== koltukNo));
+                            else setSeciliKoltuklar([...seciliKoltuklar, koltukNo]);
+                          }}
+                          style={{
+                            width: '32px', height: '32px', borderRadius: '6px', border: '1px solid #3f3f46',
+                            fontSize: '11px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            cursor: isDolu ? 'not-allowed' : 'pointer',
+                            backgroundColor: isDolu ? '#ef4444' : isSecili ? '#10b981' : 'transparent',
+                            color: isDolu || isSecili ? '#fff' : '#a1a1aa', transition: 'all 0.2s'
+                          }}
+                        >
+                          {satir}{sutun}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
-              <div style={{ textAlign: 'right' }}>
-                 <div style={{ fontSize: '12px', color: '#71717a', marginBottom: '4px' }}>Durum</div>
-                 <div style={{ color: secilenFilm.kapasite > 0 ? '#10b981' : '#ef4444', fontSize: '14px', fontWeight: '500' }}>{secilenFilm.kapasite} Koltuk Kaldı</div>
+              <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '12px', fontSize: '12px', color: '#a1a1aa' }}>
+                <span style={{display: 'flex', alignItems: 'center', gap:'6px'}}><div style={{width:'12px', height:'12px', border:'1px solid #3f3f46', borderRadius:'3px'}}></div> Boş</span>
+                <span style={{display: 'flex', alignItems: 'center', gap:'6px'}}><div style={{width:'12px', height:'12px', backgroundColor:'#10b981', borderRadius:'3px'}}></div> Seçili</span>
+                <span style={{display: 'flex', alignItems: 'center', gap:'6px'}}><div style={{width:'12px', height:'12px', backgroundColor:'#ef4444', borderRadius:'3px'}}></div> Dolu</span>
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
-              <input type="number" min="1" max={secilenFilm.kapasite} defaultValue="1" id={`adet-${secilenFilm.etkinlikid}`} style={{ width: '70px', padding: '12px', backgroundColor: '#09090b', color: '#fff', border: '1px solid #3f3f46', borderRadius: '8px', textAlign: 'center', fontSize: '15px' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #27272a' }}>
+              <div>
+                <div style={{ fontSize: '13px', color: '#71717a', marginBottom: '4px' }}>Toplam Tutar</div>
+                <div style={{ color: '#fff', fontWeight: '600', fontSize: '24px' }}>
+                  {seciliKoltuklar.length * secilenFilm.fiyat} ₺
+                </div>
+              </div>
               <button 
                 onClick={() => {
-                  const adet = parseInt(document.getElementById(`adet-${secilenFilm.etkinlikid}`).value) || 1;
-                  biletSatinAl(secilenFilm.etkinlikid, secilenFilm.fiyat, secilenFilm.etkinlikadi, adet);
+                  biletSatinAl(secilenFilm.etkinlikid, secilenFilm.fiyat, secilenFilm.etkinlikadi, seciliKoltuklar);
                   setSecilenFilm(null);
                 }}
-                disabled={secilenFilm.kapasite <= 0}
-                style={{ flexGrow: 1, padding: '12px', backgroundColor: secilenFilm.kapasite > 0 ? '#e50914' : '#3f3f46', color: '#fff', border: 'none', borderRadius: '8px', cursor: secilenFilm.kapasite > 0 ? 'pointer' : 'not-allowed', fontWeight: '600', fontSize: '15px', transition: '0.2s' }}
+                disabled={secilenFilm.kapasite <= 0 || seciliKoltuklar.length === 0}
+                style={{ padding: '12px 32px', backgroundColor: seciliKoltuklar.length > 0 ? '#e50914' : '#3f3f46', color: '#fff', border: 'none', borderRadius: '8px', cursor: seciliKoltuklar.length > 0 ? 'pointer' : 'not-allowed', fontWeight: '600', fontSize: '15px', transition: '0.2s' }}
               >
                 {secilenFilm.kapasite > 0 ? 'Satın Al' : 'Tükendi'}
               </button>
@@ -190,15 +321,21 @@ function App() {
             <button title="Biletlerim" onClick={() => setAktifSekme('biletlerim')} style={getTabStyle('biletlerim')}>
               <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><line x1="13" x2="13" y1="7" y2="17"/><line x1="9" x2="9" y1="7" y2="17"/></svg>
             </button>
-            <button title="Admin Paneli" onClick={() => setAktifSekme('admin')} style={getTabStyle('admin')}>
-              <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
-            </button>
+            
+            {/* SADECE ADMIN GÖREBİLİR */}
+            {kullanici.rol === 'admin' && (
+              <button title="Admin Paneli" onClick={() => setAktifSekme('admin')} style={getTabStyle('admin')}>
+                <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+              </button>
+            )}
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '13px', color: '#a1a1aa' }}>Hoş geldin</span>
+            <span style={{ fontSize: '13px', color: '#a1a1aa' }}>
+              {kullanici.rol === 'admin' ? 'Yönetici' : 'Hoş geldin'}
+            </span>
             <span style={{ fontSize: '14px', fontWeight: '500', color: '#fafafa' }}>{kullanici.adsoyad}</span>
           </div>
           <div style={{ height: '32px', width: '1px', backgroundColor: '#27272a' }}></div>
@@ -207,8 +344,11 @@ function App() {
                <span style={{ fontSize: '11px', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Bakiye</span>
                <span style={{ fontSize: '15px', fontWeight: '600', color: '#10b981' }}>{kullanici.bakiye} ₺</span>
             </div>
-            <button onClick={bakiyeYukle} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#18181b', color: '#fff', border: '1px solid #3f3f46', cursor: 'pointer', transition: '0.2s' }}>
+            <button onClick={bakiyeYukle} title="Bakiye Yükle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#18181b', color: '#fff', border: '1px solid #3f3f46', cursor: 'pointer', transition: '0.2s' }}>
               <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+            <button onClick={cikisYap} title="Çıkış Yap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '8px', backgroundColor: '#18181b', color: '#ef4444', border: '1px solid #3f3f46', cursor: 'pointer', transition: '0.2s', marginLeft: '4px' }}>
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
             </button>
           </div>
         </div>
@@ -221,7 +361,7 @@ function App() {
         {aktifSekme === 'ana_sayfa' && (
           <>
             <div style={{ display: 'flex', alignItems: 'center', marginBottom: '32px' }}>
-              <h2 style={{ margin: 0, fontSize: '24px', fontWeight: '600' }}>Vizyondaki Filmler</h2>
+              <h2 style={{ margin: '0', fontSize: '24px', fontWeight: '600' }}>Vizyondaki Filmler</h2>
             </div>
             
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '24px' }}>
@@ -284,7 +424,8 @@ function App() {
                       <th style={{ padding: '16px 24px', fontWeight: '500' }}>Tarih</th>
                       <th style={{ padding: '16px 24px', fontWeight: '500' }}>Saat</th>
                       <th style={{ padding: '16px 24px', fontWeight: '500' }}>Salon</th>
-                      <th style={{ padding: '16px 24px', fontWeight: '500' }}>Adet</th>
+                      <th style={{ padding: '16px 24px', fontWeight: '500', textAlign: 'center' }}>Adet</th>
+                      <th style={{ padding: '16px 24px', fontWeight: '500' }}>Koltuklar</th>
                       <th style={{ padding: '16px 24px', fontWeight: '500', textAlign: 'right' }}>İşlem</th>
                     </tr>
                   </thead>
@@ -295,9 +436,24 @@ function App() {
                         <td style={{ padding: '16px 24px', color: '#a1a1aa' }}>{new Date(b.tarih).toLocaleDateString('tr-TR')}</td>
                         <td style={{ padding: '16px 24px', color: '#a1a1aa' }}>{b.seans_saati && b.seans_saati !== "None" ? b.seans_saati.slice(0,5) : "-"}</td>
                         <td style={{ padding: '16px 24px', color: '#a1a1aa' }}>{b.salon_adi}</td>
-                        <td style={{ padding: '16px 24px' }}><span style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 8px', borderRadius: '6px', fontSize: '12px' }}>{b.adet}</span></td>
+                        <td style={{ padding: '16px 24px', textAlign: 'center' }}>
+                          <span style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#fff', padding: '4px 10px', borderRadius: '6px', fontSize: '13px', fontWeight: '500' }}>{b.adet}</span>
+                        </td>
+                        <td style={{ padding: '16px 24px' }}>
+                          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                            {b.koltuklar && b.koltuklar !== "-" ? (
+                              b.koltuklar.split(',').map((koltuk, idx) => (
+                                <span key={idx} style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '4px 8px', borderRadius: '6px', fontSize: '12px', fontWeight: '600', letterSpacing: '0.5px' }}>
+                                  {koltuk.trim()}
+                                </span>
+                              ))
+                            ) : (
+                              <span style={{ color: '#71717a' }}>-</span>
+                            )}
+                          </div>
+                        </td>
                         <td style={{ padding: '16px 24px', textAlign: 'right' }}>
-                          <button onClick={() => biletIptalEt(b.etkinlik_id, b.tarih)} style={{ backgroundColor: 'transparent', color: '#ef4444', border: '1px solid #ef4444', padding: '6px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', transition: '0.2s' }}>İptal</button>
+                          <button onClick={() => biletIptalEt(b.etkinlik_id, b.tarih)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '6px 16px', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: '500', transition: '0.2s' }}>İptal</button>
                         </td>
                       </tr>
                     ))}
@@ -310,8 +466,8 @@ function App() {
           </div>
         )}
 
-        {/* ADMIN */}
-        {aktifSekme === 'admin' && (
+        {/* ADMIN PANELI */}
+        {aktifSekme === 'admin' && kullanici.rol === 'admin' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <div style={{ backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', overflow: 'hidden' }}>
               <div style={{ padding: '24px', borderBottom: '1px solid #27272a' }}>
