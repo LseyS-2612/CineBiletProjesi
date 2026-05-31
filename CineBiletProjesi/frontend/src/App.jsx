@@ -32,6 +32,8 @@ function App() {
 
   const closeModal = () => setModalData({ ...modalData, visible: false });
 
+  const [yeniFilm, setYeniFilm] = useState({ ad: '', fiyat: '', kapasite: '', seans: '' });
+
   // --- GİRİŞ / KAYIT / ÇIKIŞ ---
   const handleAuth = (e) => {
     e.preventDefault();
@@ -77,6 +79,32 @@ function App() {
       verileriGuncelle();
     })
     .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || 'Güncelleme başarısız', type: 'error' }));
+  };
+
+
+  const filmEkle = (e) => {
+    e.preventDefault();
+    if(!yeniFilm.ad || !yeniFilm.fiyat || !yeniFilm.kapasite || !yeniFilm.seans) {
+      return alert("Lütfen tüm alanları doldurun.");
+    }
+    axios.post('http://127.0.0.1:8000/api/etkinlik-ekle/', yeniFilm)
+      .then(res => {
+        setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
+        setYeniFilm({ ad: '', fiyat: '', kapasite: '', seans: '' });
+        verileriGuncelle();
+      })
+      .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error, type: 'error' }));
+  };
+
+  const filmSil = (id) => {
+    if(!window.confirm("Bu filmi, ona ait tüm biletleri ve yorumları silmek istediğinize emin misiniz?")) return;
+    
+    axios.post('http://127.0.0.1:8000/api/etkinlik-sil/', { etkinlik_id: id })
+      .then(res => {
+        alert(res.data.message);
+        verileriGuncelle();
+      })
+      .catch(err => alert("Hata oluştu."));
   };
 
   // --- VERİ ÇEKME ---
@@ -170,8 +198,18 @@ function App() {
     border: 'none', padding: '10px 14px', borderRadius: '8px', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center'
   });
 
-  const satirlar = ['A', 'B', 'C', 'D', 'E'];
-  const sutunlar = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  // --- DİNAMİK KOLTUK HESAPLAMASI ---
+    let toplamKapasite = 0;
+    let dinamikSatirlar = [];
+    const dinamikSutunlar = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; // Her satırda maksimum 10 koltuk
+    
+    if (secilenFilm) {
+      // Veritabanındaki kalan kapasite + satılmış koltuk sayısı = Orijinal Kapasite
+      toplamKapasite = secilenFilm.kapasite + doluKoltuklar.length;
+      const satirSayisi = Math.ceil(toplamKapasite / 10);
+      // A, B, C, D diye satır harflerini otomatik üretir
+      dinamikSatirlar = Array.from({ length: satirSayisi }, (_, i) => String.fromCharCode(65 + i)); 
+    }
 
   // ==========================================
   // EĞER GİRİŞ YAPILMAMIŞSA SADECE LOGİN EKRANI
@@ -247,7 +285,8 @@ function App() {
       {/* Film İnceleme ve Bilet Alma Modalı */}
       {secilenFilm && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9998, backdropFilter: 'blur(4px)' }}>
-          <div style={{ backgroundColor: '#18181b', padding: '32px', borderRadius: '16px', border: '1px solid #27272a', width: '500px', maxWidth: '95%', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
+          {/* BÜYÜK SALONLAR İÇİN MAX-HEIGHT VE SCROLL EKLENDİ */}
+          <div className="custom-scrollbar" style={{ backgroundColor: '#18181b', padding: '32px', borderRadius: '16px', border: '1px solid #27272a', width: '500px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
               <div>
@@ -260,13 +299,19 @@ function App() {
               <button onClick={() => setSecilenFilm(null)} style={{ background: 'none', border: 'none', color: '#71717a', cursor: 'pointer', fontSize: '20px' }}>✕</button>
             </div>
 
+            {/* DİNAMİK KOLTUK HARİTASI */}
             <div style={{ marginBottom: '24px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', backgroundColor: '#09090b', padding: '20px 10px', borderRadius: '8px', border: '1px solid #27272a' }}>
                 <div style={{ width: '80%', height: '4px', backgroundColor: '#3f3f46', borderRadius: '2px', marginBottom: '16px', boxShadow: '0 4px 10px rgba(255,255,255,0.1)' }}></div>
                 <span style={{ fontSize: '10px', color: '#71717a', marginBottom: '8px', letterSpacing: '2px' }}>PERDE</span>
-                {satirlar.map(satir => (
+                
+                {dinamikSatirlar.map((satir, satirIndex) => (
                   <div key={satir} style={{ display: 'flex', gap: '6px' }}>
-                    {sutunlar.map(sutun => {
+                    {dinamikSutunlar.map((sutun, sutunIndex) => {
+                      const globalIndex = satirIndex * 10 + sutunIndex;
+                      // Eğer döngü kapasiteyi aştıysa (örn: 35 kişilik salonda 36. koltuk) orayı boş bırak
+                      if (globalIndex >= toplamKapasite) return null; 
+
                       const koltukNo = `${satir}${sutun}`;
                       const isDolu = doluKoltuklar.includes(koltukNo);
                       const isSecili = seciliKoltuklar.includes(koltukNo);
@@ -293,6 +338,7 @@ function App() {
                   </div>
                 ))}
               </div>
+              
               <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', marginTop: '12px', fontSize: '12px', color: '#a1a1aa' }}>
                 <span style={{display: 'flex', alignItems: 'center', gap:'6px'}}><div style={{width:'12px', height:'12px', border:'1px solid #3f3f46', borderRadius:'3px'}}></div> Boş</span>
                 <span style={{display: 'flex', alignItems: 'center', gap:'6px'}}><div style={{width:'12px', height:'12px', backgroundColor:'#10b981', borderRadius:'3px'}}></div> Seçili</span>
@@ -300,6 +346,7 @@ function App() {
               </div>
             </div>
 
+            {/* FİYAT VE SATIN ALMA BÖLÜMÜ */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', paddingBottom: '24px', borderBottom: '1px solid #27272a' }}>
               <div>
                 <div style={{ fontSize: '13px', color: '#71717a', marginBottom: '4px' }}>Toplam Tutar</div>
@@ -319,6 +366,7 @@ function App() {
               </button>
             </div>
 
+            {/* YORUM BÖLÜMÜ */}
             <div style={{ backgroundColor: '#09090b', padding: '16px', borderRadius: '8px', border: '1px solid #27272a' }}>
               <h4 style={{ margin: '0 0 12px 0', color: '#e4e4e7', fontSize: '14px', fontWeight: '500' }}>Değerlendirme Yap</h4>
               <input type="text" placeholder="Düşünceleriniz..." id={`yorum-${secilenFilm.etkinlikid}`} style={{ width: '100%', padding: '10px 12px', marginBottom: '8px', backgroundColor: '#18181b', color: '#fff', border: '1px solid #3f3f46', borderRadius: '6px', boxSizing: 'border-box', fontSize: '13px' }} />
@@ -356,9 +404,6 @@ function App() {
             <button title="Biletlerim" onClick={() => setAktifSekme('biletlerim')} style={getTabStyle('biletlerim')}>
               <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><line x1="13" x2="13" y1="7" y2="17"/><line x1="9" x2="9" y1="7" y2="17"/></svg>
             </button>
-            <button title="Hesabım" onClick={() => setAktifSekme('hesabim')} style={getTabStyle('hesabim')}>
-              <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-            </button>
             
             {kullanici.rol === 'admin' && (
               <button title="Admin Paneli" onClick={() => setAktifSekme('admin')} style={getTabStyle('admin')}>
@@ -369,12 +414,21 @@ function App() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '13px', color: '#a1a1aa' }}>
+          
+          {/* TIKLANABİLİR PROFİL ALANI (HESABIM) */}
+          <div 
+            onClick={() => setAktifSekme('hesabim')} 
+            title="Profil Ayarları"
+            style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', backgroundColor: aktifSekme === 'hesabim' ? 'rgba(229, 9, 20, 0.1)' : 'transparent', transition: '0.2s' }}
+          >
+            <span style={{ fontSize: '13px', color: aktifSekme === 'hesabim' ? '#e50914' : '#a1a1aa', transition: '0.2s' }}>
               {kullanici.rol === 'admin' ? 'Yönetici' : 'Hoş geldin'}
             </span>
-            <span style={{ fontSize: '14px', fontWeight: '500', color: '#fafafa' }}>{kullanici.adsoyad}</span>
+            <span style={{ fontSize: '14px', fontWeight: '500', color: aktifSekme === 'hesabim' ? '#e50914' : '#fafafa', transition: '0.2s' }}>
+              {kullanici.adsoyad}
+            </span>
           </div>
+
           <div style={{ height: '32px', width: '1px', backgroundColor: '#27272a' }}></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
@@ -528,6 +582,41 @@ function App() {
         {/* ADMIN PANELI */}
         {aktifSekme === 'admin' && kullanici.rol === 'admin' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            
+            {/* FİLM YÖNETİMİ (EKLE/SİL) */}
+            <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+              
+              <div style={{ flex: 1, minWidth: '300px', backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', padding: '24px' }}>
+                <h2 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: '500', color: '#fff' }}>Yeni Film Ekle</h2>
+                <form onSubmit={filmEkle} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  <input type="text" placeholder="Film Adı" value={yeniFilm.ad} onChange={e => setYeniFilm({...yeniFilm, ad: e.target.value})} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }} />
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <input type="number" placeholder="Fiyat (₺)" value={yeniFilm.fiyat} onChange={e => setYeniFilm({...yeniFilm, fiyat: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }} />
+                    <input type="number" placeholder="Kapasite" value={yeniFilm.kapasite} onChange={e => setYeniFilm({...yeniFilm, kapasite: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }} />
+                  </div>
+                  <input type="time" placeholder="Seans Saati" value={yeniFilm.seans} onChange={e => setYeniFilm({...yeniFilm, seans: e.target.value})} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }} />
+                  <button type="submit" style={{ padding: '12px', backgroundColor: '#e50914', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>Filmi Vizyona Sok</button>
+                </form>
+              </div>
+
+              <div style={{ flex: 1, minWidth: '300px', backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', padding: '24px', maxHeight: '350px', overflowY: 'auto' }} className="custom-scrollbar">
+                <h2 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: '500', color: '#fff' }}>Mevcut Filmleri Yönet</h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {etkinlikler.map(etk => (
+                    <div key={etk.etkinlikid} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#09090b', padding: '12px 16px', borderRadius: '8px', border: '1px solid #27272a' }}>
+                      <div>
+                        <div style={{ color: '#fff', fontWeight: '500', fontSize: '14px' }}>{etk.etkinlikadi}</div>
+                        <div style={{ color: '#71717a', fontSize: '12px' }}>{etk.seans_saati ? etk.seans_saati.slice(0,5) : '-'} • {etk.fiyat} ₺</div>
+                      </div>
+                      <button onClick={() => filmSil(etk.etkinlikid)} style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '6px 12px', borderRadius: '6px', cursor: 'pointer', fontSize: '12px' }}>Sil</button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+
+            {/* ESKİ ANALİZ VE LOG TABLOLARI */}
             <div style={{ backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', overflow: 'hidden' }}>
               <div style={{ padding: '24px', borderBottom: '1px solid #27272a' }}>
                 <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '500', color: '#a1a1aa' }}>Satış Analizi Verileri</h2>

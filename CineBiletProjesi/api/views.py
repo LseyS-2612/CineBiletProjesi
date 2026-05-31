@@ -281,3 +281,38 @@ def profil_guncelle(request):
         return Response({"message": "Profil başarıyla güncellendi!"})
     except Exception as e:
         return Response({"error": str(e)}, status=400)
+    
+
+
+@api_view(['POST'])
+def etkinlik_ekle(request):
+    ad = request.data.get('ad')
+    fiyat = request.data.get('fiyat')
+    kapasite = request.data.get('kapasite')
+    seans = request.data.get('seans')
+    salon_id = 1 # Varsayılan olarak 1. salona ekleyelim
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO etkinlikler (EtkinlikAdi, Fiyat, Kapasite, SalonID, seans_saati)
+                VALUES (%s, %s, %s, %s, %s)
+            """, [ad, fiyat, kapasite, salon_id, seans])
+        return Response({"message": "Film başarıyla eklendi!"})
+    except Exception as e:
+        return Response({"error": str(e)}, status=400)
+
+@api_view(['POST'])
+def etkinlik_sil(request):
+    etkinlik_id = request.data.get('etkinlik_id')
+    try:
+        with connection.cursor() as cursor:
+            # Önce filme ait biletleri ve yorumları siliyoruz (Foreign Key hatası almamak için)
+            cursor.execute("DELETE FROM biletler WHERE EtkinlikID = %s", [etkinlik_id])
+            cursor.execute("DELETE FROM FilmYorumlari WHERE EtkinlikID = %s", [etkinlik_id])
+            cursor.execute("DELETE FROM EtkinlikKategori WHERE EtkinlikID = %s", [etkinlik_id])
+            # En son filmi siliyoruz
+            cursor.execute("DELETE FROM etkinlikler WHERE EtkinlikID = %s", [etkinlik_id])
+        return Response({"message": "Film başarıyla silindi!"})
+    except Exception as e:
+        return Response({"error": str(e)}, status=400)

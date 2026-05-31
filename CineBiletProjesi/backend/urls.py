@@ -18,4 +18,6 @@ urlpatterns = [
     path('api/kayit-ol/', views.kayit_ol),
     path('api/giris-yap/', views.giris_yap),
     path('api/profil-guncelle/', views.profil_guncelle),
+    path('api/etkinlik-ekle/', views.etkinlik_ekle),
+    path('api/etkinlik-sil/', views.etkinlik_sil),
 ]
