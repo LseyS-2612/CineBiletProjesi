@@ -1,64 +1,71 @@
-"""# 🎬 CineBilet - Full-Stack Etkinlik & Bilet Yönetim Sistemi
+# 🎬 CineBilet | Full-Stack Biletleme & Etkinlik Yönetim Platformu
 
-CineBilet, ilişkisel veritabanı mimarisi ve modern web teknolojileri (Full-Stack) kullanılarak geliştirilmiş, uçtan uca çalışan profesyonel bir etkinlik ve sinema biletleme platformudur. Bu proje; katmanlı mimari tasarımı, veritabanı normalizasyonu (3NF), transaction güvenliği, Rol Bazlı Yetkilendirme (RBAC) ve asenkron veri iletişimi gibi kritik yazılım mühendisliği konseptlerini uygulamalı olarak sergilemektedir.
+![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![Django](https://img.shields.io/badge/Django-092E20?style=for-the-badge&logo=django&logoColor=green)
+![MySQL](https://img.shields.io/badge/MySQL-00000F?style=for-the-badge&logo=mysql&logoColor=white)
 
----
-
-## 🚀 Öne Çıkan Gelişmiş Özellikler
-
-* **Modern Tasarım & UX Mimarisi:** Arayüz, tek sayfa uygulaması (SPA) prensiplerine sadık kalınarak tamamen sade, göz yormayan, premium bir karanlık tema tasarımıyla (Zinc 900) baştan aşağı yenilenmiştir. Film kartları tıklanabilir yüzeylere dönüştürülmüş, mikro etkileşimler (hover-scale efekti) eklenmiş ve karmaşıklığı önlemek adına tüm işlemler (Bilet alma, değerlendirme yapma) şık Pop-up (Modal) pencerelere taşınmıştır.
-* **Sekmeli Dashboard Düzeni:** Kullanıcı deneyimini maksimize etmek amacıyla arayüz; yazısız, temiz ve minimalist SVG ikonlara sahip sekmeli (Tab-based) bir dashboard sistemine ayrılmıştır (Ana Sayfa, Bilet Geçmişi, Admin Paneli).
-* **Rol Bazlı Yetkilendirme (RBAC):** Veritabanı seviyesinde desteklenen yetkilendirme modeli sayesinde kullanıcılar `Admin` ve `Kullanici` rolleriyle sisteme dahil olur. Admin paneli, satış analizleri ve sistem logları sadece `Admin` yetkisine sahip hesaplara dinamik olarak gösterilir ve backend katmanında (403 Forbidden) sıkı bir şekilde korunur.
-* **Çoka Çok (N:M) İlişki Deseni:** Filmler ve Kategoriler arasında kurulan çoka çok ilişki yapısı, optimize edilmiş bir ara tablo (Junction Table) üzerinden yönetilmektedir. Bir film birden fazla kategoriye (Örn: Aksiyon, Bilim Kurgu) sahip olabilir ve bu veriler backend katmanında `GROUP_CONCAT` kullanılarak tek sorguda asenkron olarak taşınır.
-* **Zaman Tabanlı Seans Yönetimi:** Her bir etkinlik, veritabanında `TIME` tipinde tutulan dinamik seans saatleriyle gerçekçi bir sinema programı yapısında simüle edilir.
+CineBilet, modern web teknolojileri ve gelişmiş ilişkisel veritabanı mimarisi kullanılarak geliştirilmiş profesyonel bir sinema/etkinlik biletleme sistemidir. Bu proje; interaktif arayüz tasarımı, katmanlı mimari, Rol Bazlı Yetkilendirme (RBAC) ve transaction güvenliği gibi ileri seviye yazılım mühendisliği pratiklerini tek bir çatı altında toplamaktadır.
 
 ---
 
-## 🛠️ Kullanılan Teknolojiler
+## ✨ Öne Çıkan Özellikler
 
-* **Frontend:** React.js, Vite, Axios, SVG-based Icons, CSS Micro-interactions.
-* **Backend:** Django, Django REST Framework (RESTful API katmanı, Fonksiyonel API Views).
-* **Veritabanı:** MySQL (İlişkisel Veritabanı Yönetim Sistemi - RDBMS).
-* **Middleware & Güvenlik:** Django CORS Headers (Güvenli kökenler arası veri paylaşımı).
-
----
-
-## 📊 Veritabanı Mimarisi & Uygulanan İleri Seviye Konular
-
-Proje mimarisinde veritabanı tutarlılığı, performans ve güvenlik en üst düzeyde tutulmuştur:
-
-1.  **Veritabanı Normalizasyonu (3NF):** Veri tekrarını önlemek ve ilişkisel bütünlüğü korumak amacıyla `Salonlar` ve `Kategoriler` bağımsız tablolar haline getirilerek mimari 3. Normal Form (3NF) kurallarına tam uyumlu hale getirilmiştir.
-2.  **TCL (Transaction Control Language):** Eşzamanlı bilet satın alma işlemlerinde bakiye ve salon kapasite tutarlılığını garanti altına almak amacıyla `START TRANSACTION`, `COMMIT` ve `ROLLBACK` mekanizmaları aktif olarak işletilmektedir.
-3.  **Stored Procedures (`sp_BiletSatinAl` & `sp_BiletIptalGrubu`):** Satın alma ve iade mantığının tamamı, ağ trafiğini azaltmak ve güvenliği artırmak amacıyla veritabanı tarafında saklı yordamlar (Procedures) olarak optimize edilmiştir.
-4.  **SQL Views (`View_EtkinlikAnalizi`):** Karmaşık aggregate fonksiyonları (`SUM`, `COUNT`) içeren doluluk oranı ve ciro hesaplama sorguları, performansı artırmak adına bir veritabanı görünümü (View) üzerinden canlı olarak çekilir ve Admin paneline aktarılır.
-5.  **Triggers (Tetikleyiciler - `IslemLoglari`):** Kullanıcıların bakiye değişiklikleri, bilet alım ve iptal gibi tüm kritik adımları, veritabanı seviyesinde çalışan Trigger'lar vasıtasıyla otomatik olarak izlenir ve log tablosuna tarih damgasıyla kaydedilir.
-6.  **DCL (Data Control Language):** Veritabanı kullanıcı rolleri ve şema üzerindeki erişim/yazma yetkilendirmeleri DCL komutlarıyla sınırlandırılmıştır.
+* 💺 **İnteraktif Koltuk Seçimi:** Kullanıcılar sinema salonu planı üzerinden (Grid yapısı) istedikleri boş koltukları seçebilir. Dolu koltuklar gerçek zamanlı olarak engellenir ve toplam tutar anlık hesaplanır.
+* 🔐 **Üyelik & Profil Yönetimi:** Kullanıcı kayıt/giriş sistemi (`LocalStorage` destekli kalıcı oturum). Kullanıcılar kendi bilet geçmişlerini görebilir ve profil bilgilerini güncelleyebilir.
+* 🛡️ **Rol Bazlı Yetkilendirme (RBAC):** Sistemde `Admin` ve `Kullanıcı` olmak üzere iki farklı rol bulunur. Satış analizleri ve sistem loglarını barındıran Admin Paneli, sadece yetkili hesaplara gösterilir.
+* 🎨 **Modern SPA & Karanlık Tema:** Tek Sayfa Uygulaması (SPA) prensipleriyle tasarlanmış, Zinc-900 renk paletine sahip, göz yormayan, premium bir UI/UX deneyimi. Animasyonlu modallar ve şık SVG ikonlar içerir.
+* ⚡ **Güvenli Biletleme İşlemleri:** Bakiye kontrolü, kapasite düşümü ve bilet oluşturma işlemleri veritabanı tarafında (Stored Procedures & TCL) tek bir `Transaction` olarak yürütülür.
 
 ---
 
-## 📋 Kurulum Adımları
+## 🛠️ Teknoloji Yığını
+
+**Frontend:** React.js, Vite, Axios, Modern CSS (Flexbox/Grid, Micro-interactions)  
+**Backend:** Django, Django REST Framework (DRF)  
+**Veritabanı:** MySQL (RDBMS)  
+**Mimari:** RESTful API, 3-Tier Architecture  
+
+---
+
+## 📊 Gelişmiş Veritabanı Mimarisi
+
+CineBilet, arka planda yüksek performanslı ve veri tutarlılığını garanti eden bir veritabanı yapısına sahiptir:
+
+1. **Normalizasyon (3NF):** Veri tekrarını önlemek için Salonlar, Filmler ve Kategoriler bağımsız tablolara ayrılmış, N:M (Çoka Çok) ilişkiler optimize edilmiştir.
+2. **Transaction Güvenliği (TCL):** Bilet alma işlemleri `START TRANSACTION`, `COMMIT` ve `ROLLBACK` ile korunur. Yetersiz bakiye veya aynı anda koltuk alınması durumunda işlem geri alınır.
+3. **Stored Procedures (Saklı Yordamlar):** `sp_BiletSatinAl` gibi prosedürler sayesinde iş mantığı (business logic) veritabanı katmanında güvenle işlenir.
+4. **Triggers (Tetikleyiciler):** Bakiye yükleme, bilet alım ve iade gibi tüm kritik işlemler anlık olarak tetiklenerek `IslemLoglari` tablosuna kaydedilir.
+5. **SQL Views:** Toplam hasılat, bilet satışı ve salon doluluk oranları `View_EtkinlikAnalizi` üzerinden anlık olarak hesaplanıp Admin paneline sunulur.
+
+---
+
+## 🚀 Kurulum Adımları
 
 ### 1. Veritabanı Hazırlığı
-1. MySQL Workbench veya terminal üzerinden yeni bir şema oluşturun:
-2. Projenin kök dizininde yer alan güncel cinebilet.sql dosyasını veritabanınıza içeri aktarın (Import).
+Proje kök dizininde bulunan `cinebilet.sql` dosyasını MySQL Workbench veya terminal aracılığıyla veritabanınıza import edin.
 
-2. Backend (API) Kurulumu
-```Bash
-cd backend
+### 2. Backend (API) Kurulumu
+```bash
+cd CineBiletProjesi
 python -m venv venv
 
-# Windows için aktifleştirme:
-venv\\Scripts\\activate
-# macOS/Linux için aktifleştirme:
+# Windows için:
+venv\Scripts\activate
+# macOS/Linux için:
 # source venv/bin/activate
 
 pip install -r requirements.txt
 python manage.py runserver
 ```
-3. Frontend (UI) Kurulumu
+
+### 3. Frontend (UI) Kurulumu
 ```Bash
 cd frontend
 npm install
 npm run dev
 ```
+
+Not: Test etmek için hazır Yönetici (Admin) hesabı bilgileri:
+Email: yonetici@cinebilet.com | Şifre: 123456
+
 💡 Geliştiren: Anıl Arda Kılıç
