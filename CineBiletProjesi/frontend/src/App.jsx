@@ -3,7 +3,6 @@ import axios from 'axios'
 
 function App() {
   // --- AUTHENTICATION & LOCALSTORAGE ---
-  // Uygulama açıldığında localStorage'da kullanıcı var mı diye bakıyoruz
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('kullanici'));
   const [authMode, setAuthMode] = useState('login'); 
   const [authForm, setAuthForm] = useState({ adsoyad: '', email: '', sifre: '' });
@@ -13,7 +12,6 @@ function App() {
     return saved ? JSON.parse(saved) : { id: null, adsoyad: '', bakiye: 0, rol: 'kullanici' };
   });
 
-  // Profil form state'i
   const [profilForm, setProfilForm] = useState({ adsoyad: kullanici?.adsoyad || '', sifre: '' });
 
   // --- UYGULAMA STATELERİ ---
@@ -31,8 +29,9 @@ function App() {
   const [doluKoltuklar, setDoluKoltuklar] = useState([]);
 
   const closeModal = () => setModalData({ ...modalData, visible: false });
-
-  const [yeniFilm, setYeniFilm] = useState({ ad: '', fiyat: '', kapasite: '', seans: '' });
+  
+  const [salonlar, setSalonlar] = useState([]);
+  const [yeniFilm, setYeniFilm] = useState({ ad: '', fiyat: '', kapasite: '', seans: '', salon_id: '' });
 
   // --- GİRİŞ / KAYIT / ÇIKIŞ ---
   const handleAuth = (e) => {
@@ -44,7 +43,7 @@ function App() {
           setKullanici(user);
           setProfilForm({ adsoyad: user.adsoyad, sifre: '' });
           setIsLoggedIn(true);
-          localStorage.setItem('kullanici', JSON.stringify(user)); // Tarayıcıya kaydet
+          localStorage.setItem('kullanici', JSON.stringify(user));
           setAuthForm({ adsoyad: '', email: '', sifre: '' });
         })
         .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || "Giriş başarısız", type: 'error' }));
@@ -61,7 +60,7 @@ function App() {
   const cikisYap = () => {
     setIsLoggedIn(false);
     setKullanici({ id: null, adsoyad: '', bakiye: 0, rol: 'kullanici' });
-    localStorage.removeItem('kullanici'); // Tarayıcıdan sil
+    localStorage.removeItem('kullanici');
     setAktifSekme('ana_sayfa');
   };
 
@@ -75,12 +74,23 @@ function App() {
     })
     .then(res => {
       setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
-      setProfilForm({ ...profilForm, sifre: '' }); // Şifre alanını temizle
+      setProfilForm({ ...profilForm, sifre: '' });
       verileriGuncelle();
     })
     .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || 'Güncelleme başarısız', type: 'error' }));
   };
 
+  // YENİ: Veritabanından gelen salonlara göre kapasite belirleme
+  const handleSalonDegisimi = (e) => {
+    const secilenSalonId = e.target.value;
+    const secilenSalon = salonlar.find(s => s.salon_id.toString() === secilenSalonId);
+    
+    setYeniFilm({ 
+      ...yeniFilm, 
+      salon_id: secilenSalonId, 
+      kapasite: secilenSalon ? secilenSalon.kapasite : '' 
+    });
+  };
 
   const filmEkle = (e) => {
     e.preventDefault();
@@ -90,7 +100,14 @@ function App() {
     axios.post('http://127.0.0.1:8000/api/etkinlik-ekle/', yeniFilm)
       .then(res => {
         setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
-        setYeniFilm({ ad: '', fiyat: '', kapasite: '', seans: '' });
+        // YENİ: Başarıyla eklendiğinde ilk salona sıfırla
+        setYeniFilm({ 
+            ad: '', 
+            fiyat: '', 
+            kapasite: salonlar.length > 0 ? salonlar[0].kapasite : '', 
+            seans: '', 
+            salon_id: salonlar.length > 0 ? salonlar[0].salon_id : '' 
+        });
         verileriGuncelle();
       })
       .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error, type: 'error' }));
@@ -115,7 +132,6 @@ function App() {
     axios.get(`http://127.0.0.1:8000/api/etkinlikler/?t=${ts}`).then(res => setEtkinlikler(res.data))
     axios.get(`http://127.0.0.1:8000/api/yorumlar/?t=${ts}`).then(res => setYorumlar(res.data));
     
-    // Kullanıcı bilgilerini güncelle ve localStorage'ı yenile
     axios.get(`http://127.0.0.1:8000/api/kullanici/${kullanici.id}/?t=${ts}`).then(res => {
       setKullanici(prev => {
         const updatedUser = { ...prev, ...res.data };
@@ -129,6 +145,14 @@ function App() {
     if (kullanici.rol === 'admin') {
       axios.get(`http://127.0.0.1:8000/api/analiz/?t=${ts}`).then(res => setAnaliz(res.data));
       axios.get(`http://127.0.0.1:8000/api/loglar/${kullanici.id}/?t=${ts}`).then(res => setLoglar(res.data));
+      
+      // YENİ: API'den veritabanı salonlarını çek
+      axios.get(`http://127.0.0.1:8000/api/salonlar/?t=${ts}`).then(res => {
+        setSalonlar(res.data);
+        if (res.data.length > 0 && yeniFilm.salon_id === '') {
+          setYeniFilm(prev => ({ ...prev, salon_id: res.data[0].salon_id, kapasite: res.data[0].kapasite }));
+        }
+      });
     }
   }
 
@@ -201,13 +225,11 @@ function App() {
   // --- DİNAMİK KOLTUK HESAPLAMASI ---
     let toplamKapasite = 0;
     let dinamikSatirlar = [];
-    const dinamikSutunlar = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; // Her satırda maksimum 10 koltuk
+    const dinamikSutunlar = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; 
     
     if (secilenFilm) {
-      // Veritabanındaki kalan kapasite + satılmış koltuk sayısı = Orijinal Kapasite
       toplamKapasite = secilenFilm.kapasite + doluKoltuklar.length;
       const satirSayisi = Math.ceil(toplamKapasite / 10);
-      // A, B, C, D diye satır harflerini otomatik üretir
       dinamikSatirlar = Array.from({ length: satirSayisi }, (_, i) => String.fromCharCode(65 + i)); 
     }
 
@@ -285,7 +307,6 @@ function App() {
       {/* Film İnceleme ve Bilet Alma Modalı */}
       {secilenFilm && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 9998, backdropFilter: 'blur(4px)' }}>
-          {/* BÜYÜK SALONLAR İÇİN MAX-HEIGHT VE SCROLL EKLENDİ */}
           <div className="custom-scrollbar" style={{ backgroundColor: '#18181b', padding: '32px', borderRadius: '16px', border: '1px solid #27272a', width: '500px', maxWidth: '95%', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }}>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
@@ -309,7 +330,6 @@ function App() {
                   <div key={satir} style={{ display: 'flex', gap: '6px' }}>
                     {dinamikSutunlar.map((sutun, sutunIndex) => {
                       const globalIndex = satirIndex * 10 + sutunIndex;
-                      // Eğer döngü kapasiteyi aştıysa (örn: 35 kişilik salonda 36. koltuk) orayı boş bırak
                       if (globalIndex >= toplamKapasite) return null; 
 
                       const koltukNo = `${satir}${sutun}`;
@@ -461,7 +481,7 @@ function App() {
                     <div>
                       <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', fontWeight: '500', color: '#fff', lineHeight: '1.3' }}>{etk.etkinlikadi}</h3>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                        {etk.kategoriler.split(',').map((cat, idx) => (
+                        {etk.kategoriler && etk.kategoriler.split(',').map((cat, idx) => (
                           <span key={idx} style={{ backgroundColor: '#27272a', color: '#a1a1aa', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '500', letterSpacing: '0.3px' }}>
                             {cat.trim()}
                           </span>
@@ -557,7 +577,7 @@ function App() {
           </div>
         )}
 
-        {/* YENİ: HESABIM SEKMESİ */}
+        {/* HESABIM SEKMESİ */}
         {aktifSekme === 'hesabim' && (
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <div style={{ backgroundColor: '#18181b', padding: '40px', borderRadius: '16px', width: '100%', maxWidth: '400px', border: '1px solid #27272a' }}>
@@ -590,10 +610,23 @@ function App() {
                 <h2 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: '500', color: '#fff' }}>Yeni Film Ekle</h2>
                 <form onSubmit={filmEkle} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <input type="text" placeholder="Film Adı" value={yeniFilm.ad} onChange={e => setYeniFilm({...yeniFilm, ad: e.target.value})} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }} />
+                  
+                  {/* YENİ: Veritabanından gelen Dinamik Salon Seçimi */}
+                  <select value={yeniFilm.salon_id} onChange={handleSalonDegisimi} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }}>
+                    {salonlar.map(salon => (
+                      <option key={salon.salon_id} value={salon.salon_id}>
+                        {salon.salon_adi} ({salon.kapasite} Kişilik)
+                      </option>
+                    ))}
+                  </select>
+
                   <div style={{ display: 'flex', gap: '12px' }}>
                     <input type="number" placeholder="Fiyat (₺)" value={yeniFilm.fiyat} onChange={e => setYeniFilm({...yeniFilm, fiyat: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }} />
-                    <input type="number" placeholder="Kapasite" value={yeniFilm.kapasite} onChange={e => setYeniFilm({...yeniFilm, kapasite: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }} />
+                    
+                    {/* YENİ: Kapasite inputu artık salt okunur ve API'den gelen değere göre otomatik doluyor */}
+                    <input type="number" placeholder="Kapasite" value={yeniFilm.kapasite} readOnly title="Seçilen salona göre veritabanından otomatik belirlenir" style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#27272a', color: '#a1a1aa', cursor: 'not-allowed' }} />
                   </div>
+                  
                   <input type="time" placeholder="Seans Saati" value={yeniFilm.seans} onChange={e => setYeniFilm({...yeniFilm, seans: e.target.value})} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }} />
                   <button type="submit" style={{ padding: '12px', backgroundColor: '#e50914', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>Filmi Vizyona Sok</button>
                 </form>
@@ -616,7 +649,7 @@ function App() {
 
             </div>
 
-            {/* ESKİ ANALİZ VE LOG TABLOLARI */}
+            {/* ANALİZ VE LOG TABLOLARI */}
             <div style={{ backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', overflow: 'hidden' }}>
               <div style={{ padding: '24px', borderBottom: '1px solid #27272a' }}>
                 <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '500', color: '#a1a1aa' }}>Satış Analizi Verileri</h2>

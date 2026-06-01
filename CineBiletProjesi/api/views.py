@@ -194,9 +194,15 @@ def bilet_al(request):
 
 @api_view(['POST'])
 def bilet_iptal(request):
+    kullanici_id = request.data.get('kullanici_id') # React'tan gelen kullanıcı ID'sini al
+    etkinlik_id = request.data.get('etkinlik_id')
+    tarih = request.data.get('tarih')
+
     try:
         with connection.cursor() as cursor:
-            cursor.callproc('sp_BiletIptalGrubu', [1, request.data.get('etkinlik_id'), request.data.get('tarih')])
+            # Sabit 1 yerine dinamik kullanici_id'yi gönderiyoruz
+            cursor.callproc('sp_BiletIptalGrubu', [kullanici_id, etkinlik_id, tarih])
+            
         return Response({"message": "Bilet iptal edildi ve ücret iade edildi!"})
     except Exception as e:
         return Response({"error": str(e)}, status=400)
@@ -284,20 +290,55 @@ def profil_guncelle(request):
     
 
 
+from datetime import datetime, timedelta
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
+from django.db import connection
+
 @api_view(['POST'])
 def etkinlik_ekle(request):
     ad = request.data.get('ad')
     fiyat = request.data.get('fiyat')
     kapasite = request.data.get('kapasite')
-    seans = request.data.get('seans')
-    salon_id = 1 # Varsayılan olarak 1. salona ekleyelim
+    seans = request.data.get('seans') # '15:30' formatında gelmeli
+    salon_id = request.data.get('salon_id') # Formdan salon ID'si de gelmeli
+
+    if not salon_id or not seans:
+        return Response({"error": "Lütfen salon ve seans saati seçin."}, status=400)
+
+    # İleride veritabanından çekilebilir, şimdilik sabit:
+    STANDART_BLOKAJ_DK = 135 # 120dk film + 15dk temizlik
+    
+    yeni_baslangic = datetime.strptime(seans, '%H:%M')
+    yeni_bitis = yeni_baslangic + timedelta(minutes=STANDART_BLOKAJ_DK)
 
     try:
         with connection.cursor() as cursor:
+            # 1. Seçilen salondaki mevcut filmleri çek
+            cursor.execute("""
+                SELECT seans_saati FROM etkinlikler 
+                WHERE SalonID = %s AND seans_saati IS NOT NULL
+            """, [salon_id])
+            mevcut_seanslar = cursor.fetchall()
+
+            # 2. Çakışma Kontrolü
+            for row in mevcut_seanslar:
+                mevcut_saat_str = str(row[0])[:5] # '15:30' kısmını al
+                mevcut_baslangic = datetime.strptime(mevcut_saat_str, '%H:%M')
+                mevcut_bitis = mevcut_baslangic + timedelta(minutes=STANDART_BLOKAJ_DK)
+
+                # Algoritma: (Yeni Başlangıç < Mevcut Bitiş) VE (Yeni Bitiş > Mevcut Başlangıç)
+                if (yeni_baslangic < mevcut_bitis) and (yeni_bitis > mevcut_baslangic):
+                    return Response({
+                        "error": f"Çakışma! Bu salonda {mevcut_saat_str} seansında film var."
+                    }, status=400)
+
+            # 3. Çakışma yoksa kaydet
             cursor.execute("""
                 INSERT INTO etkinlikler (EtkinlikAdi, Fiyat, Kapasite, SalonID, seans_saati)
                 VALUES (%s, %s, %s, %s, %s)
             """, [ad, fiyat, kapasite, salon_id, seans])
+            
         return Response({"message": "Film başarıyla eklendi!"})
     except Exception as e:
         return Response({"error": str(e)}, status=400)
@@ -316,3 +357,20 @@ def etkinlik_sil(request):
         return Response({"message": "Film başarıyla silindi!"})
     except Exception as e:
         return Response({"error": str(e)}, status=400)
+    
+
+
+@api_view(['GET'])
+def salonlar_listesi(request):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT SalonID, SalonAdi, ToplamKapasite FROM salonlar")
+        rows = cursor.fetchall()
+        
+    result = []
+    for row in rows:
+        result.append({
+            "salon_id": row[0],
+            "salon_adi": row[1],
+            "kapasite": row[2]
+        })
+    return Response(result)
