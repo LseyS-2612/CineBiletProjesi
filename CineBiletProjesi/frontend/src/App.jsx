@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import axios from 'axios'
 
+const API_BASE = 'http://127.0.0.1:8000/api';
+
 function App() {
   // --- AUTHENTICATION & LOCALSTORAGE ---
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('kullanici'));
@@ -34,26 +36,25 @@ function App() {
   const [yeniFilm, setYeniFilm] = useState({ ad: '', fiyat: '', kapasite: '', seans: '', salon_id: '' });
 
   // --- GİRİŞ / KAYIT / ÇIKIŞ ---
-  const handleAuth = (e) => {
+  const handleAuth = async (e) => {
     e.preventDefault();
-    if (authMode === 'login') {
-      axios.post('http://127.0.0.1:8000/api/giris-yap/', { email: authForm.email, sifre: authForm.sifre })
-        .then(res => {
-          const user = res.data.kullanici;
-          setKullanici(user);
-          setProfilForm({ adsoyad: user.adsoyad, sifre: '' });
-          setIsLoggedIn(true);
-          localStorage.setItem('kullanici', JSON.stringify(user));
-          setAuthForm({ adsoyad: '', email: '', sifre: '' });
-        })
-        .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || "Giriş başarısız", type: 'error' }));
-    } else {
-      axios.post('http://127.0.0.1:8000/api/kayit-ol/', authForm)
-        .then(res => {
-          setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
-          setAuthMode('login');
-        })
-        .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || "Kayıt başarısız", type: 'error' }));
+    const url = authMode === 'login' ? `${API_BASE}/giris-yap/` : `${API_BASE}/kayit-ol/`;
+    
+    try {
+      const res = await axios.post(url, authForm);
+      if (authMode === 'login') {
+        const user = res.data.kullanici;
+        setKullanici(user);
+        setProfilForm({ adsoyad: user.adsoyad, sifre: '' });
+        setIsLoggedIn(true);
+        localStorage.setItem('kullanici', JSON.stringify(user));
+        setAuthForm({ adsoyad: '', email: '', sifre: '' });
+      } else {
+        setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
+        setAuthMode('login');
+      }
+    } catch (err) {
+      setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || "İşlem başarısız", type: 'error' });
     }
   };
 
@@ -65,94 +66,95 @@ function App() {
   };
 
   // --- PROFİL GÜNCELLEME ---
-  const profilGuncelle = (e) => {
+  const profilGuncelle = async (e) => {
     e.preventDefault();
-    axios.post('http://127.0.0.1:8000/api/profil-guncelle/', { 
-      kullanici_id: kullanici.id, 
-      adsoyad: profilForm.adsoyad, 
-      sifre: profilForm.sifre 
-    })
-    .then(res => {
+    try {
+      const res = await axios.post(`${API_BASE}/profil-guncelle/`, { 
+        kullanici_id: kullanici.id, adsoyad: profilForm.adsoyad, sifre: profilForm.sifre 
+      });
       setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
       setProfilForm({ ...profilForm, sifre: '' });
       verileriGuncelle();
-    })
-    .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || 'Güncelleme başarısız', type: 'error' }));
+    } catch (err) {
+      setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || 'Güncelleme başarısız', type: 'error' });
+    }
   };
 
-  // YENİ: Veritabanından gelen salonlara göre kapasite belirleme
   const handleSalonDegisimi = (e) => {
     const secilenSalonId = e.target.value;
     const secilenSalon = salonlar.find(s => s.salon_id.toString() === secilenSalonId);
-    
-    setYeniFilm({ 
-      ...yeniFilm, 
-      salon_id: secilenSalonId, 
-      kapasite: secilenSalon ? secilenSalon.kapasite : '' 
-    });
+    setYeniFilm({ ...yeniFilm, salon_id: secilenSalonId, kapasite: secilenSalon ? secilenSalon.kapasite : '' });
   };
 
-  const filmEkle = (e) => {
+  const filmEkle = async (e) => {
     e.preventDefault();
     if(!yeniFilm.ad || !yeniFilm.fiyat || !yeniFilm.kapasite || !yeniFilm.seans) {
       return alert("Lütfen tüm alanları doldurun.");
     }
-    axios.post('http://127.0.0.1:8000/api/etkinlik-ekle/', yeniFilm)
-      .then(res => {
-        setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
-        // YENİ: Başarıyla eklendiğinde ilk salona sıfırla
-        setYeniFilm({ 
-            ad: '', 
-            fiyat: '', 
-            kapasite: salonlar.length > 0 ? salonlar[0].kapasite : '', 
-            seans: '', 
-            salon_id: salonlar.length > 0 ? salonlar[0].salon_id : '' 
-        });
-        verileriGuncelle();
-      })
-      .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error, type: 'error' }));
+    try {
+      const res = await axios.post(`${API_BASE}/etkinlik-ekle/`, yeniFilm);
+      setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
+      setYeniFilm({ ad: '', fiyat: '', kapasite: salonlar.length > 0 ? salonlar[0].kapasite : '', seans: '', salon_id: salonlar.length > 0 ? salonlar[0].salon_id : '' });
+      verileriGuncelle();
+    } catch (err) {
+      setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error, type: 'error' });
+    }
   };
 
-  const filmSil = (id) => {
+  const filmSil = async (id) => {
     if(!window.confirm("Bu filmi, ona ait tüm biletleri ve yorumları silmek istediğinize emin misiniz?")) return;
-    
-    axios.post('http://127.0.0.1:8000/api/etkinlik-sil/', { etkinlik_id: id })
-      .then(res => {
-        alert(res.data.message);
-        verileriGuncelle();
-      })
-      .catch(err => alert("Hata oluştu."));
+    try {
+      const res = await axios.post(`${API_BASE}/etkinlik-sil/`, { etkinlik_id: id });
+      alert(res.data.message);
+      verileriGuncelle();
+    } catch {
+      alert("Hata oluştu.");
+    }
   };
 
-  // --- VERİ ÇEKME ---
-  const verileriGuncelle = () => {
+  // --- VERİ ÇEKME (Optimize Edildi - Promise.all ile Paralel Yükleme) ---
+  const verileriGuncelle = async () => {
     if (!kullanici.id) return; 
-
     const ts = new Date().getTime(); 
-    axios.get(`http://127.0.0.1:8000/api/etkinlikler/?t=${ts}`).then(res => setEtkinlikler(res.data))
-    axios.get(`http://127.0.0.1:8000/api/yorumlar/?t=${ts}`).then(res => setYorumlar(res.data));
-    
-    axios.get(`http://127.0.0.1:8000/api/kullanici/${kullanici.id}/?t=${ts}`).then(res => {
-      setKullanici(prev => {
-        const updatedUser = { ...prev, ...res.data };
-        localStorage.setItem('kullanici', JSON.stringify(updatedUser));
-        return updatedUser;
-      });
-    });
 
-    axios.get(`http://127.0.0.1:8000/api/biletlerim/${kullanici.id}/?t=${ts}`).then(res => setBiletlerim(res.data)).catch(() => console.log("bilet yok"))
+    try {
+      const [etkRes, yorumRes, userRes] = await Promise.all([
+        axios.get(`${API_BASE}/etkinlikler/?t=${ts}`),
+        axios.get(`${API_BASE}/yorumlar/?t=${ts}`),
+        axios.get(`${API_BASE}/kullanici/${kullanici.id}/?t=${ts}`)
+      ]);
 
-    if (kullanici.rol === 'admin') {
-      axios.get(`http://127.0.0.1:8000/api/analiz/?t=${ts}`).then(res => setAnaliz(res.data));
-      axios.get(`http://127.0.0.1:8000/api/loglar/${kullanici.id}/?t=${ts}`).then(res => setLoglar(res.data));
+      setEtkinlikler(etkRes.data);
+      setYorumlar(yorumRes.data);
       
-      // YENİ: API'den veritabanı salonlarını çek
-      axios.get(`http://127.0.0.1:8000/api/salonlar/?t=${ts}`).then(res => {
-        setSalonlar(res.data);
-        if (res.data.length > 0 && yeniFilm.salon_id === '') {
-          setYeniFilm(prev => ({ ...prev, salon_id: res.data[0].salon_id, kapasite: res.data[0].kapasite }));
-        }
+      setKullanici(prev => {
+        const updated = { ...prev, ...userRes.data };
+        localStorage.setItem('kullanici', JSON.stringify(updated));
+        return updated;
       });
+
+      // Biletleri arka planda çek (Hata verirse sorun değil, boş bırak)
+      axios.get(`${API_BASE}/biletlerim/${kullanici.id}/?t=${ts}`)
+        .then(res => setBiletlerim(res.data)).catch(() => setBiletlerim([]));
+
+      // Eğer admin ise ekstra verileri paralel çek
+      if (kullanici.rol === 'admin') {
+        const [analizRes, logRes, salonlarRes] = await Promise.all([
+          axios.get(`${API_BASE}/analiz/?t=${ts}`),
+          axios.get(`${API_BASE}/loglar/${kullanici.id}/?t=${ts}`),
+          axios.get(`${API_BASE}/salonlar/?t=${ts}`)
+        ]);
+        
+        setAnaliz(analizRes.data);
+        setLoglar(logRes.data);
+        setSalonlar(salonlarRes.data);
+        
+        if (salonlarRes.data.length > 0 && yeniFilm.salon_id === '') {
+          setYeniFilm(prev => ({ ...prev, salon_id: salonlarRes.data[0].salon_id, kapasite: salonlarRes.data[0].kapasite }));
+        }
+      }
+    } catch (err) {
+      console.error("Veri güncelleme hatası");
     }
   }
 
@@ -165,9 +167,9 @@ function App() {
 
   useEffect(() => {
     if (secilenFilm) {
-      axios.get(`http://127.0.0.1:8000/api/dolu-koltuklar/${secilenFilm.etkinlikid}/`)
+      axios.get(`${API_BASE}/dolu-koltuklar/${secilenFilm.etkinlikid}/`)
         .then(res => setDoluKoltuklar(res.data))
-        .catch(err => console.log(err));
+        .catch(() => setDoluKoltuklar([]));
     } else {
       setSeciliKoltuklar([]);
       setDoluKoltuklar([]);
@@ -176,44 +178,57 @@ function App() {
   }, [secilenFilm]);
 
   // --- KULLANICI İŞLEMLERİ ---
-  const bakiyeYukle = () => {
+  const bakiyeYukle = async () => {
     const miktar = prompt("Yüklemek istediğiniz tutarı giriniz:");
     if (miktar && !isNaN(miktar) && miktar > 0) {
-      axios.post('http://127.0.0.1:8000/api/bakiye-ekle/', { kullanici_id: kullanici.id, tutar: miktar })
-        .then(res => {
-          setModalData({ visible: true, title: 'Bakiye Yüklendi', message: res.data.message, type: 'success' });
-          verileriGuncelle();
-        })
-        .catch(() => alert("İşlem başarısız."));
+      try {
+        const res = await axios.post(`${API_BASE}/bakiye-ekle/`, { kullanici_id: kullanici.id, tutar: miktar });
+        setModalData({ visible: true, title: 'Bakiye Yüklendi', message: res.data.message, type: 'success' });
+        verileriGuncelle();
+      } catch {
+        alert("İşlem başarısız.");
+      }
     }
   };
 
-  const biletSatinAl = (id, fiyat, ad, koltukDizisi) => {
+  const biletSatinAl = async (id, fiyat, ad, koltukDizisi) => {
     const adet = koltukDizisi.length;
     if (adet === 0) return setModalData({ visible: true, title: 'Uyarı', message: 'Koltuk seçiniz.', type: 'error' });
+    
     const toplamFiyat = fiyat * adet;
-    if (kullanici.bakiye < toplamFiyat) return setModalData({ visible: true, title: 'Yetersiz Bakiye', message: `Mevcut: ${kullanici.bakiye} TL`, type: 'error' });
+    if (kullanici.bakiye < toplamFiyat) {
+      return setModalData({ visible: true, title: 'Yetersiz Bakiye', message: `Mevcut: ${kullanici.bakiye} TL`, type: 'error' });
+    }
 
-    axios.post('http://127.0.0.1:8000/api/bilet-al/', { kullanici_id: kullanici.id, etkinlik_id: id, koltuklar: koltukDizisi })
-      .then(res => {
-        setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
-        setSeciliKoltuklar([]); 
-        setTimeout(() => verileriGuncelle(), 300);
-      })
-      .catch(err => setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || 'Hata oluştu', type: 'error' }));
+    try {
+      const res = await axios.post(`${API_BASE}/bilet-al/`, { kullanici_id: kullanici.id, etkinlik_id: id, koltuklar: koltukDizisi });
+      setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
+      setSeciliKoltuklar([]); 
+      setTimeout(() => verileriGuncelle(), 300);
+    } catch (err) {
+      setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error || 'Hata oluştu', type: 'error' });
+    }
   }
 
-  const biletIptalEt = (etkinlik_id, tarih) => {
+  const biletIptalEt = async (etkinlik_id, tarih) => {
     if (!window.confirm("Bileti iptal etmek istediğinize emin misiniz?")) return;
-    axios.post('http://127.0.0.1:8000/api/bilet-iptal/', { kullanici_id: kullanici.id, etkinlik_id, tarih })
-      .then(res => { alert(res.data.message); setTimeout(() => verileriGuncelle(), 300); })
-      .catch(err => alert("Hata: " + (err.response?.data?.error || "Bilinmeyen hata")));
+    try {
+      const res = await axios.post(`${API_BASE}/bilet-iptal/`, { kullanici_id: kullanici.id, etkinlik_id, tarih });
+      alert(res.data.message); 
+      setTimeout(() => verileriGuncelle(), 300);
+    } catch (err) {
+      alert("Hata: " + (err.response?.data?.error || "Bilinmeyen hata"));
+    }
   };  
 
-  const yorumGonder = (id, puan, metin) => {
-    axios.post('http://127.0.0.1:8000/api/yorum-yap/', { kullanici_id: kullanici.id, etkinlik_id: id, puan: puan, yorum_metni: metin })
-    .then(res => { alert(res.data.message); verileriGuncelle(); })
-    .catch(() => alert("Yorum yapılamadı."));
+  const yorumGonder = async (id, puan, metin) => {
+    try {
+      const res = await axios.post(`${API_BASE}/yorum-yap/`, { kullanici_id: kullanici.id, etkinlik_id: id, puan, yorum_metni: metin });
+      alert(res.data.message); 
+      verileriGuncelle();
+    } catch {
+      alert("Yorum yapılamadı.");
+    }
   };
 
   const getTabStyle = (sekmeAdi) => ({
@@ -223,18 +238,17 @@ function App() {
   });
 
   // --- DİNAMİK KOLTUK HESAPLAMASI ---
-    let toplamKapasite = 0;
-    let dinamikSatirlar = [];
-    const dinamikSutunlar = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; 
-    
-    if (secilenFilm) {
-      toplamKapasite = secilenFilm.kapasite + doluKoltuklar.length;
-      const satirSayisi = Math.ceil(toplamKapasite / 10);
-      dinamikSatirlar = Array.from({ length: satirSayisi }, (_, i) => String.fromCharCode(65 + i)); 
-    }
+  let toplamKapasite = 0;
+  let dinamikSatirlar = [];
+  const dinamikSutunlar = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; 
+  
+  if (secilenFilm) {
+    toplamKapasite = secilenFilm.kapasite + doluKoltuklar.length;
+    dinamikSatirlar = Array.from({ length: Math.ceil(toplamKapasite / 10) }, (_, i) => String.fromCharCode(65 + i)); 
+  }
 
   // ==========================================
-  // EĞER GİRİŞ YAPILMAMIŞSA SADECE LOGİN EKRANI
+  // LOGİN EKRANI
   // ==========================================
   if (!isLoggedIn) {
     return (
@@ -413,7 +427,6 @@ function App() {
 
       {/* NAVBAR */}
       <nav style={{ display: 'flex', justifyContent: 'space-between', padding: '16px 40px', backgroundColor: '#09090b', borderBottom: '1px solid #27272a', alignItems: 'center', position: 'sticky', top: 0, zIndex: 10 }}>
-        
         <div style={{ display: 'flex', alignItems: 'center', gap: '48px' }}>
           <h1 style={{ color: '#e50914', margin: 0, fontSize: '24px', letterSpacing: '-0.5px', fontWeight: '800' }}>CINEBILET</h1>
           
@@ -424,7 +437,6 @@ function App() {
             <button title="Biletlerim" onClick={() => setAktifSekme('biletlerim')} style={getTabStyle('biletlerim')}>
               <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><line x1="13" x2="13" y1="7" y2="17"/><line x1="9" x2="9" y1="7" y2="17"/></svg>
             </button>
-            
             {kullanici.rol === 'admin' && (
               <button title="Admin Paneli" onClick={() => setAktifSekme('admin')} style={getTabStyle('admin')}>
                 <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z"/><path d="M12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
@@ -434,13 +446,7 @@ function App() {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          
-          {/* TIKLANABİLİR PROFİL ALANI (HESABIM) */}
-          <div 
-            onClick={() => setAktifSekme('hesabim')} 
-            title="Profil Ayarları"
-            style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', backgroundColor: aktifSekme === 'hesabim' ? 'rgba(229, 9, 20, 0.1)' : 'transparent', transition: '0.2s' }}
-          >
+          <div onClick={() => setAktifSekme('hesabim')} title="Profil Ayarları" style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', cursor: 'pointer', padding: '6px 12px', borderRadius: '8px', backgroundColor: aktifSekme === 'hesabim' ? 'rgba(229, 9, 20, 0.1)' : 'transparent', transition: '0.2s' }}>
             <span style={{ fontSize: '13px', color: aktifSekme === 'hesabim' ? '#e50914' : '#a1a1aa', transition: '0.2s' }}>
               {kullanici.rol === 'admin' ? 'Yönetici' : 'Hoş geldin'}
             </span>
@@ -603,15 +609,13 @@ function App() {
         {aktifSekme === 'admin' && kullanici.rol === 'admin' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             
-            {/* FİLM YÖNETİMİ (EKLE/SİL) */}
+            {/* FİLM YÖNETİMİ */}
             <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-              
               <div style={{ flex: 1, minWidth: '300px', backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', padding: '24px' }}>
                 <h2 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: '500', color: '#fff' }}>Yeni Film Ekle</h2>
                 <form onSubmit={filmEkle} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <input type="text" placeholder="Film Adı" value={yeniFilm.ad} onChange={e => setYeniFilm({...yeniFilm, ad: e.target.value})} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }} />
                   
-                  {/* YENİ: Veritabanından gelen Dinamik Salon Seçimi */}
                   <select value={yeniFilm.salon_id} onChange={handleSalonDegisimi} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }}>
                     {salonlar.map(salon => (
                       <option key={salon.salon_id} value={salon.salon_id}>
@@ -622,8 +626,6 @@ function App() {
 
                   <div style={{ display: 'flex', gap: '12px' }}>
                     <input type="number" placeholder="Fiyat (₺)" value={yeniFilm.fiyat} onChange={e => setYeniFilm({...yeniFilm, fiyat: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }} />
-                    
-                    {/* YENİ: Kapasite inputu artık salt okunur ve API'den gelen değere göre otomatik doluyor */}
                     <input type="number" placeholder="Kapasite" value={yeniFilm.kapasite} readOnly title="Seçilen salona göre veritabanından otomatik belirlenir" style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#27272a', color: '#a1a1aa', cursor: 'not-allowed' }} />
                   </div>
                   
@@ -646,7 +648,6 @@ function App() {
                   ))}
                 </div>
               </div>
-
             </div>
 
             {/* ANALİZ VE LOG TABLOLARI */}

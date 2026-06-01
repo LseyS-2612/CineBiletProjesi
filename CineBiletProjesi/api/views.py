@@ -1,17 +1,15 @@
-from django.shortcuts import render
-from rest_framework.generics import ListAPIView
+from datetime import datetime, timedelta
+from django.db import connection, transaction
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from django.db import connection
-from .models import Etkinlikler, Kullanicilar, Biletler
-from .serializers import EtkinlikSerializer
 from django.contrib.auth.hashers import make_password, check_password
 
+# Sadece kullanılan modeli import ediyoruz
+from .models import Kullanicilar
 
 @api_view(['GET'])
 def etkinlikler(request):
     with connection.cursor() as cursor:
-        # GROUP_CONCAT ve LEFT JOIN ile kategorileri çektik
         cursor.execute("""
             SELECT 
                 e.EtkinlikID, e.EtkinlikAdi, e.Fiyat, e.Kapasite, s.SalonAdi, e.seans_saati,
@@ -24,17 +22,16 @@ def etkinlikler(request):
         """)
         rows = cursor.fetchall()
         
-    result = []
-    for row in rows:
-        result.append({
-            "etkinlikid": row[0],
-            "etkinlikadi": row[1],
-            "fiyat": row[2],
-            "kapasite": row[3],
-            "salon_adi": row[4] or "Belirtilmemiş",
-            "seans_saati": str(row[5]) if row[5] else None,
-            "kategoriler": row[6] or "Kategori Yok" # Yeni alan
-        })
+    result = [{
+        "etkinlikid": row[0],
+        "etkinlikadi": row[1],
+        "fiyat": row[2],
+        "kapasite": row[3],
+        "salon_adi": row[4] or "Belirtilmemiş",
+        "seans_saati": str(row[5]) if row[5] else None,
+        "kategoriler": row[6] or "Kategori Yok"
+    } for row in rows]
+    
     return Response(result)
 
 @api_view(['GET'])
@@ -45,8 +42,8 @@ def kullanici_detay(request, pk):
             "adsoyad": kullanici.adsoyad,
             "bakiye": kullanici.bakiye
         })
-    except:
-        return Response({"error": "kullanici bulunamadi"}, status=404)
+    except Kullanicilar.DoesNotExist:
+        return Response({"error": "Kullanıcı bulunamadı."}, status=404)
 
 
 @api_view(['GET'])
@@ -71,7 +68,7 @@ def biletlerim(request, kullanici_id):
         "adet": r[3], 
         "salon_adi": r[4], 
         "seans_saati": str(r[5]) if r[5] else None,
-        "koltuklar": r[6] if r[6] else "-" # Koltuklar eklendi
+        "koltuklar": r[6] if r[6] else "-"
     } for r in rows]
     return Response(sonuc)
 
@@ -89,44 +86,37 @@ def bakiye_ekle(request):
     except Exception as e:
         return Response({"error": str(e)}, status=400)
 
-# sql view verisini ceken yer burasi
+
 @api_view(['GET'])
 def etkinlik_analizi(request):
     with connection.cursor() as cursor:
-        # view zaten sirali geliyor o yuzden direkt cektim
         cursor.execute("SELECT * FROM View_EtkinlikAnalizi")
         rows = cursor.fetchall()
         
-    result = []
-    for row in rows:
-        result.append({
-            "id": row[0],
-            "ad": row[1],
-            "satis": row[2],
-            "hasilat": row[3],
-            "doluluk": row[4]
-        })
+    result = [{
+        "id": row[0],
+        "ad": row[1],
+        "satis": row[2],
+        "hasilat": row[3],
+        "doluluk": row[4]
+    } for row in rows]
     return Response(result)
 
-# trigger loglarini ceken yer
+
 @api_view(['GET'])
 def islem_gecmisi(request, kullanici_id):
     with connection.cursor() as cursor:
         cursor.execute("SELECT * FROM IslemLoglari WHERE KullaniciID = %s ORDER BY IslemTarihi DESC", [kullanici_id])
         rows = cursor.fetchall()
         
-    result = []
-    for row in rows:
-        result.append({
-            "tip": row[2],
-            "eski": row[3],
-            "yeni": row[4],
-            "tutar": row[5],
-            "tarih": row[6]
-        })
+    result = [{
+        "tip": row[2],
+        "eski": row[3],
+        "yeni": row[4],
+        "tutar": row[5],
+        "tarih": row[6]
+    } for row in rows]
     return Response(result)
-
-
 
 
 @api_view(['GET'])
@@ -141,21 +131,20 @@ def tum_yorumlar(request):
         """)
         rows = cursor.fetchall()
         
-    result = []
-    for row in rows:
-        result.append({
-            "id": row[0],
-            "film_adi": row[1],
-            "yazan": row[2],
-            "puan": row[3],
-            "metin": row[4],
-            "tarih": row[5]
-        })
+    result = [{
+        "id": row[0],
+        "film_adi": row[1],
+        "yazan": row[2],
+        "puan": row[3],
+        "metin": row[4],
+        "tarih": row[5]
+    } for row in rows]
     return Response(result)
+
 
 @api_view(['POST'])
 def yorum_yap(request):
-    kullanici_id = request.data.get('kullanici_id') # Projedeki sabit kullanıcı ID'si
+    kullanici_id = request.data.get('kullanici_id')
     etkinlik_id = request.data.get('etkinlik_id')
     puan = request.data.get('puan')
     yorum_metni = request.data.get('yorum_metni')
@@ -169,11 +158,9 @@ def yorum_yap(request):
     return Response({"message": "Yorum başarıyla eklendi!"})
 
 
-
-
 @api_view(['POST'])
 def bilet_al(request):
-    kullanici_id = request.data.get('kullanici_id') # Artık sabit 1 değil, giriş yapan kullanıcı
+    kullanici_id = request.data.get('kullanici_id')
     etkinlik_id = request.data.get('etkinlik_id')
     secilen_koltuklar = request.data.get('koltuklar', []) 
     adet = len(secilen_koltuklar)
@@ -191,23 +178,19 @@ def bilet_al(request):
         return Response({"error": str(e)}, status=400)
     
 
-
 @api_view(['POST'])
 def bilet_iptal(request):
-    kullanici_id = request.data.get('kullanici_id') # React'tan gelen kullanıcı ID'sini al
+    kullanici_id = request.data.get('kullanici_id')
     etkinlik_id = request.data.get('etkinlik_id')
     tarih = request.data.get('tarih')
 
     try:
         with connection.cursor() as cursor:
-            # Sabit 1 yerine dinamik kullanici_id'yi gönderiyoruz
             cursor.callproc('sp_BiletIptalGrubu', [kullanici_id, etkinlik_id, tarih])
-            
         return Response({"message": "Bilet iptal edildi ve ücret iade edildi!"})
     except Exception as e:
         return Response({"error": str(e)}, status=400)
     
-
 
 @api_view(['GET'])
 def dolu_koltuklar(request, etkinlik_id):
@@ -222,9 +205,6 @@ def dolu_koltuklar(request, etkinlik_id):
     return Response(koltuklar)
 
 
-
-
-
 @api_view(['POST'])
 def kayit_ol(request):
     adsoyad = request.data.get('adsoyad')
@@ -234,7 +214,7 @@ def kayit_ol(request):
     if not adsoyad or not email or not sifre:
         return Response({"error": "Lütfen tüm alanları doldurun."}, status=400)
         
-    hashed_sifre = make_password(sifre) # Şifreyi şifreliyoruz
+    hashed_sifre = make_password(sifre)
     
     try:
         with connection.cursor() as cursor:
@@ -244,8 +224,8 @@ def kayit_ol(request):
             """, [adsoyad, email, hashed_sifre])
         return Response({"message": "Kayıt başarılı! Giriş yapabilirsiniz."})
     except Exception as e:
-     
         return Response({"error": str(e)}, status=400)
+
 
 @api_view(['POST'])
 def giris_yap(request):
@@ -258,7 +238,6 @@ def giris_yap(request):
         
     if row:
         db_sifre = row[3]
-        # Eğer şifre uyuşuyorsa (veya test için düz metin 123456 girdiysek)
         if check_password(sifre, db_sifre) or sifre == db_sifre:
             kullanici_bilgisi = {
                 "id": row[0],
@@ -287,53 +266,41 @@ def profil_guncelle(request):
         return Response({"message": "Profil başarıyla güncellendi!"})
     except Exception as e:
         return Response({"error": str(e)}, status=400)
-    
 
-
-from datetime import datetime, timedelta
-from rest_framework.response import Response
-from rest_framework.decorators import api_view
-from django.db import connection
 
 @api_view(['POST'])
 def etkinlik_ekle(request):
     ad = request.data.get('ad')
     fiyat = request.data.get('fiyat')
     kapasite = request.data.get('kapasite')
-    seans = request.data.get('seans') # '15:30' formatında gelmeli
-    salon_id = request.data.get('salon_id') # Formdan salon ID'si de gelmeli
+    seans = request.data.get('seans')
+    salon_id = request.data.get('salon_id')
 
     if not salon_id or not seans:
         return Response({"error": "Lütfen salon ve seans saati seçin."}, status=400)
 
-    # İleride veritabanından çekilebilir, şimdilik sabit:
-    STANDART_BLOKAJ_DK = 135 # 120dk film + 15dk temizlik
-    
+    STANDART_BLOKAJ_DK = 135 
     yeni_baslangic = datetime.strptime(seans, '%H:%M')
     yeni_bitis = yeni_baslangic + timedelta(minutes=STANDART_BLOKAJ_DK)
 
     try:
         with connection.cursor() as cursor:
-            # 1. Seçilen salondaki mevcut filmleri çek
             cursor.execute("""
                 SELECT seans_saati FROM etkinlikler 
                 WHERE SalonID = %s AND seans_saati IS NOT NULL
             """, [salon_id])
             mevcut_seanslar = cursor.fetchall()
 
-            # 2. Çakışma Kontrolü
             for row in mevcut_seanslar:
-                mevcut_saat_str = str(row[0])[:5] # '15:30' kısmını al
+                mevcut_saat_str = str(row[0])[:5]
                 mevcut_baslangic = datetime.strptime(mevcut_saat_str, '%H:%M')
                 mevcut_bitis = mevcut_baslangic + timedelta(minutes=STANDART_BLOKAJ_DK)
 
-                # Algoritma: (Yeni Başlangıç < Mevcut Bitiş) VE (Yeni Bitiş > Mevcut Başlangıç)
                 if (yeni_baslangic < mevcut_bitis) and (yeni_bitis > mevcut_baslangic):
                     return Response({
                         "error": f"Çakışma! Bu salonda {mevcut_saat_str} seansında film var."
                     }, status=400)
 
-            # 3. Çakışma yoksa kaydet
             cursor.execute("""
                 INSERT INTO etkinlikler (EtkinlikAdi, Fiyat, Kapasite, SalonID, seans_saati)
                 VALUES (%s, %s, %s, %s, %s)
@@ -347,17 +314,16 @@ def etkinlik_ekle(request):
 def etkinlik_sil(request):
     etkinlik_id = request.data.get('etkinlik_id')
     try:
-        with connection.cursor() as cursor:
-            # Önce filme ait biletleri ve yorumları siliyoruz (Foreign Key hatası almamak için)
-            cursor.execute("DELETE FROM biletler WHERE EtkinlikID = %s", [etkinlik_id])
-            cursor.execute("DELETE FROM FilmYorumlari WHERE EtkinlikID = %s", [etkinlik_id])
-            cursor.execute("DELETE FROM EtkinlikKategori WHERE EtkinlikID = %s", [etkinlik_id])
-            # En son filmi siliyoruz
-            cursor.execute("DELETE FROM etkinlikler WHERE EtkinlikID = %s", [etkinlik_id])
+        # transaction.atomic() eklendi: İşlemlerden biri yarım kalırsa veritabanı tutarsızlığını önler.
+        with transaction.atomic():
+            with connection.cursor() as cursor:
+                cursor.execute("DELETE FROM biletler WHERE EtkinlikID = %s", [etkinlik_id])
+                cursor.execute("DELETE FROM FilmYorumlari WHERE EtkinlikID = %s", [etkinlik_id])
+                cursor.execute("DELETE FROM EtkinlikKategori WHERE EtkinlikID = %s", [etkinlik_id])
+                cursor.execute("DELETE FROM etkinlikler WHERE EtkinlikID = %s", [etkinlik_id])
         return Response({"message": "Film başarıyla silindi!"})
     except Exception as e:
         return Response({"error": str(e)}, status=400)
-    
 
 
 @api_view(['GET'])
@@ -366,11 +332,9 @@ def salonlar_listesi(request):
         cursor.execute("SELECT SalonID, SalonAdi, ToplamKapasite FROM salonlar")
         rows = cursor.fetchall()
         
-    result = []
-    for row in rows:
-        result.append({
-            "salon_id": row[0],
-            "salon_adi": row[1],
-            "kapasite": row[2]
-        })
+    result = [{
+        "salon_id": row[0],
+        "salon_adi": row[1],
+        "kapasite": row[2]
+    } for row in rows]
     return Response(result)
