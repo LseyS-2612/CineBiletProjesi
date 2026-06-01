@@ -33,7 +33,8 @@ function App() {
   const closeModal = () => setModalData({ ...modalData, visible: false });
   
   const [salonlar, setSalonlar] = useState([]);
-  const [yeniFilm, setYeniFilm] = useState({ ad: '', fiyat: '', kapasite: '', seans: '', salon_id: '' });
+  const [kategoriler, setKategoriler] = useState([]);
+  const [yeniFilm, setYeniFilm] = useState({ ad: '', fiyat: '', kapasite: '', seans: '', tarih: '', salon_id: '', kategoriler: [] });
 
   // --- GİRİŞ / KAYIT / ÇIKIŞ ---
   const handleAuth = async (e) => {
@@ -86,15 +87,20 @@ function App() {
     setYeniFilm({ ...yeniFilm, salon_id: secilenSalonId, kapasite: secilenSalon ? secilenSalon.kapasite : '' });
   };
 
+  const handleKategoriSecimi = (e) => {
+    const seciliKategoriler = Array.from(e.target.selectedOptions, option => option.value);
+    setYeniFilm({ ...yeniFilm, kategoriler: seciliKategoriler });
+  };
+
   const filmEkle = async (e) => {
     e.preventDefault();
-    if(!yeniFilm.ad || !yeniFilm.fiyat || !yeniFilm.kapasite || !yeniFilm.seans) {
-      return alert("Lütfen tüm alanları doldurun.");
+    if(!yeniFilm.ad || !yeniFilm.fiyat || !yeniFilm.seans || !yeniFilm.tarih || !yeniFilm.salon_id) {
+      return alert("Lütfen gerekli alanları doldurun.");
     }
     try {
       const res = await axios.post(`${API_BASE}/etkinlik-ekle/`, yeniFilm);
       setModalData({ visible: true, title: 'Başarılı', message: res.data.message, type: 'success' });
-      setYeniFilm({ ad: '', fiyat: '', kapasite: salonlar.length > 0 ? salonlar[0].kapasite : '', seans: '', salon_id: salonlar.length > 0 ? salonlar[0].salon_id : '' });
+      setYeniFilm({ ad: '', fiyat: '', kapasite: salonlar.length > 0 ? salonlar[0].kapasite : '', seans: '', tarih: '', salon_id: salonlar.length > 0 ? salonlar[0].salon_id : '', kategoriler: [] });
       verileriGuncelle();
     } catch (err) {
       setModalData({ visible: true, title: 'Hata', message: err.response?.data?.error, type: 'error' });
@@ -112,49 +118,36 @@ function App() {
     }
   };
 
-  // --- VERİ ÇEKME (Optimize Edildi - Promise.all ile Paralel Yükleme) ---
+  // --- VERİ ÇEKME ---
   const verileriGuncelle = async () => {
     if (!kullanici.id) return; 
     const ts = new Date().getTime(); 
 
-    try {
-      const [etkRes, yorumRes, userRes] = await Promise.all([
-        axios.get(`${API_BASE}/etkinlikler/?t=${ts}`),
-        axios.get(`${API_BASE}/yorumlar/?t=${ts}`),
-        axios.get(`${API_BASE}/kullanici/${kullanici.id}/?t=${ts}`)
-      ]);
-
-      setEtkinlikler(etkRes.data);
-      setYorumlar(yorumRes.data);
-      
+    axios.get(`${API_BASE}/etkinlikler/?t=${ts}`).then(res => setEtkinlikler(res.data)).catch(console.error);
+    axios.get(`${API_BASE}/yorumlar/?t=${ts}`).then(res => setYorumlar(res.data)).catch(console.error);
+    
+    axios.get(`${API_BASE}/kullanici/${kullanici.id}/?t=${ts}`).then(res => {
       setKullanici(prev => {
-        const updated = { ...prev, ...userRes.data };
+        const updated = { ...prev, ...res.data };
         localStorage.setItem('kullanici', JSON.stringify(updated));
         return updated;
       });
+    }).catch(console.error);
 
-      // Biletleri arka planda çek (Hata verirse sorun değil, boş bırak)
-      axios.get(`${API_BASE}/biletlerim/${kullanici.id}/?t=${ts}`)
-        .then(res => setBiletlerim(res.data)).catch(() => setBiletlerim([]));
+    axios.get(`${API_BASE}/biletlerim/${kullanici.id}/?t=${ts}`)
+      .then(res => setBiletlerim(res.data)).catch(() => setBiletlerim([]));
 
-      // Eğer admin ise ekstra verileri paralel çek
-      if (kullanici.rol === 'admin') {
-        const [analizRes, logRes, salonlarRes] = await Promise.all([
-          axios.get(`${API_BASE}/analiz/?t=${ts}`),
-          axios.get(`${API_BASE}/loglar/${kullanici.id}/?t=${ts}`),
-          axios.get(`${API_BASE}/salonlar/?t=${ts}`)
-        ]);
-        
-        setAnaliz(analizRes.data);
-        setLoglar(logRes.data);
-        setSalonlar(salonlarRes.data);
-        
-        if (salonlarRes.data.length > 0 && yeniFilm.salon_id === '') {
-          setYeniFilm(prev => ({ ...prev, salon_id: salonlarRes.data[0].salon_id, kapasite: salonlarRes.data[0].kapasite }));
+    if (kullanici.rol === 'admin') {
+      axios.get(`${API_BASE}/salonlar/?t=${ts}`).then(res => {
+        setSalonlar(res.data);
+        if (res.data.length > 0 && yeniFilm.salon_id === '') {
+          setYeniFilm(prev => ({ ...prev, salon_id: res.data[0].salon_id, kapasite: res.data[0].kapasite }));
         }
-      }
-    } catch (err) {
-      console.error("Veri güncelleme hatası");
+      }).catch(console.error);
+      
+      axios.get(`${API_BASE}/kategoriler/?t=${ts}`).then(res => setKategoriler(res.data)).catch(console.error);
+      axios.get(`${API_BASE}/analiz/?t=${ts}`).then(res => setAnaliz(res.data)).catch(console.error);
+      axios.get(`${API_BASE}/loglar/${kullanici.id}/?t=${ts}`).then(res => setLoglar(res.data)).catch(console.error);
     }
   }
 
@@ -327,6 +320,7 @@ function App() {
               <div>
                 <h2 style={{ color: '#fff', margin: '0 0 8px 0', fontSize: '22px' }}>{secilenFilm.etkinlikadi}</h2>
                 <div style={{ display: 'flex', gap: '12px', fontSize: '13px', color: '#a1a1aa' }}>
+                  <span><b style={{color: '#71717a', fontWeight: 'normal'}}>Tarih:</b> {secilenFilm.tarih ? new Date(secilenFilm.tarih).toLocaleDateString('tr-TR') : "-"}</span>
                   <span><b style={{color: '#71717a', fontWeight: 'normal'}}>Salon:</b> {secilenFilm.salon_adi}</span>
                   <span><b style={{color: '#71717a', fontWeight: 'normal'}}>Seans:</b> {secilenFilm.seans_saati ? secilenFilm.seans_saati.slice(0,5) : "-"}</span>
                 </div>
@@ -485,7 +479,12 @@ function App() {
               {etkinlikler.map((etk) => (
                 <div key={etk.etkinlikid} className="film-card" onClick={() => setSecilenFilm(etk)} style={{ backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', padding: '24px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
                     <div>
-                      <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', fontWeight: '500', color: '#fff', lineHeight: '1.3' }}>{etk.etkinlikadi}</h3>
+                      <h3 style={{ margin: '0 0 8px 0', fontSize: '18px', fontWeight: '500', color: '#fff', lineHeight: '1.3' }}>{etk.etkinlikadi}</h3>
+                      
+                      <div style={{ color: '#a1a1aa', fontSize: '13px', marginBottom: '12px' }}>
+                        {etk.tarih ? new Date(etk.tarih).toLocaleDateString('tr-TR') : '-'} • {etk.seans_saati ? etk.seans_saati.slice(0,5) : '-'}
+                      </div>
+                      
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                         {etk.kategoriler && etk.kategoriler.split(',').map((cat, idx) => (
                           <span key={idx} style={{ backgroundColor: '#27272a', color: '#a1a1aa', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '500', letterSpacing: '0.3px' }}>
@@ -629,12 +628,27 @@ function App() {
                     <input type="number" placeholder="Kapasite" value={yeniFilm.kapasite} readOnly title="Seçilen salona göre veritabanından otomatik belirlenir" style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#27272a', color: '#a1a1aa', cursor: 'not-allowed' }} />
                   </div>
                   
-                  <input type="time" placeholder="Seans Saati" value={yeniFilm.seans} onChange={e => setYeniFilm({...yeniFilm, seans: e.target.value})} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff' }} />
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <input type="date" value={yeniFilm.tarih} onChange={e => setYeniFilm({...yeniFilm, tarih: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff', colorScheme: 'dark' }} />
+                    <input type="time" placeholder="Seans Saati" value={yeniFilm.seans} onChange={e => setYeniFilm({...yeniFilm, seans: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff', colorScheme: 'dark' }} />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '12px', color: '#a1a1aa', marginBottom: '4px', textAlign: 'left' }}>Kategoriler (Ctrl/Cmd basılı tutarak çoklu seçebilirsiniz)</label>
+                    <select multiple value={yeniFilm.kategoriler} onChange={handleKategoriSecimi} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #3f3f46', backgroundColor: '#09090b', color: '#fff', minHeight: '80px', colorScheme: 'dark' }}>
+                      {kategoriler.map(kat => (
+                        <option key={kat.kategori_id} value={kat.kategori_id} style={{ padding: '4px' }}>
+                          {kat.kategori_adi}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
                   <button type="submit" style={{ padding: '12px', backgroundColor: '#e50914', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}>Filmi Vizyona Sok</button>
                 </form>
               </div>
 
-              <div style={{ flex: 1, minWidth: '300px', backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', padding: '24px', maxHeight: '350px', overflowY: 'auto' }} className="custom-scrollbar">
+              <div style={{ flex: 1, minWidth: '300px', backgroundColor: '#18181b', borderRadius: '12px', border: '1px solid #27272a', padding: '24px', maxHeight: '420px', overflowY: 'auto' }} className="custom-scrollbar">
                 <h2 style={{ margin: '0 0 20px 0', fontSize: '18px', fontWeight: '500', color: '#fff' }}>Mevcut Filmleri Yönet</h2>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {etkinlikler.map(etk => (
@@ -687,11 +701,11 @@ function App() {
                 {loglar.map((l, i) => (
                   <div key={i} style={{ padding: '12px', borderBottom: i !== loglar.length -1 ? '1px solid #27272a' : 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
-                      <div style={{ color: '#fff', fontSize: '13px', marginBottom: '4px' }}>
+                      <div style={{ color: '#fff', fontSize: '13px', marginBottom: '4px', display: 'flex', alignItems: 'center' }}>
                          <span style={{ color: l.tip === 'BAKIYE_YUKLEME' ? '#10b981' : '#e50914', marginRight:'8px' }}>●</span>
-                         {l.tip} işlemi gerçekleşti ({l.tutar} ₺)
+                         {l.tip}
                       </div>
-                      <div style={{ color: '#71717a', fontSize: '12px' }}>Bakiye: {l.eski} ➔ {l.yeni}</div>
+                      <div style={{ color: '#71717a', fontSize: '12px' }}>{l.aciklama}</div>
                     </div>
                     <div style={{ color: '#71717a', fontSize: '12px' }}>{new Date(l.tarih).toLocaleString('tr-TR')}</div>
                   </div>

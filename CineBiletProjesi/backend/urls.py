@@ -21,4 +21,6 @@ urlpatterns = [
     path('api/etkinlik-ekle/', views.etkinlik_ekle),
     path('api/etkinlik-sil/', views.etkinlik_sil),
     path('api/salonlar/', views.salonlar_listesi),
+    path('api/kategoriler/', views.kategoriler_listesi),
+    
 ]
